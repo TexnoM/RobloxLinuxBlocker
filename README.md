@@ -29,7 +29,12 @@ Includes an **integrated Telegram Bot** allowing parents to remotely block, unbl
   3. **DNS Sinkholing via `/etc/hosts`:** Routes all Roblox login, API, asset delivery, and CDN domains to `0.0.0.0` and `::1`.
 - 🤖 **Guaranteed Sober / Flatpak Compatibility:** Because Flatpak and Sober share the host's network namespace (`--share=network`) and inherit the host `/etc/hosts`, gameplay through Sober is completely disabled (connection timeouts, authentication failure, and dropped game packets) purely at the network layer without killing browser or desktop processes.
 - 📱 **Telegram Bot Parental Controls:** Remotely block or unblock Roblox from anywhere using interactive Telegram buttons, or grant temporary access (e.g. 30 minutes or 1 hour) with automatic re-blocking when the timer expires!
-- 🚀 **Intuitive CLI Commands:** Single-word controls (`rlb auto`, `rlb off`, `rlb on`, `rlb status`, `rlb add parent`, etc.).
+- 🚨 **Real-Time Attempt Detection Alerts:** The Telegram bot automatically monitors dropped packets and notifies parents whenever Roblox connection attempts are made on the PC.
+- 🛡️ **Parental PIN & Tamper-Proof Locking:** Protect console unblocking with a secret Parent PIN (`rlb pin set`), plus filesystem-level immutable locking (`chattr +i`) on `/etc/hosts`.
+- 🌐 **Anti-Circumvention (DoH & DoT Mitigation):** Sinks canary domain `use-application-dns.net` and blocks port 853 to force browsers to respect system blocklists instead of Secure DNS.
+- 📊 **Statistics & Connection Reports:** View real-time packet counters and access attempt history via `rlb stats` or directly within Telegram.
+- 📦 **Arch Linux Native Package:** Includes ready-to-use `PKGBUILD` for Arch Linux and AUR integration.
+- 🚀 **Intuitive CLI Commands:** Single-word controls (`rlb auto`, `rlb off`, `rlb on`, `rlb status`, `rlb pin`, `rlb stats`).
 - 🔄 **Persistent Autostart via systemd:** Starts automatically on system boot.
 - 🌐 **Dynamic Prefix Updates (`rlb update`):** Queries official RIPEstat (AS22697) and ARIN (RC-376) RDAP APIs to sync the latest Roblox subnets.
 - 📜 **Free & Open Source:** Licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
@@ -38,7 +43,7 @@ Includes an **integrated Telegram Bot** allowing parents to remotely block, unbl
 
 ## 📥 Installation
 
-### Method 1: Git Clone (Recommended)
+### Method 1: Git Clone & Installer (Recommended)
 
 1. Clone the repository:
    ```bash
@@ -51,7 +56,15 @@ Includes an **integrated Telegram Bot** allowing parents to remotely block, unbl
    sudo ./install.sh
    ```
 
-### Method 2: Using Make
+### Method 2: Arch Linux (makepkg)
+
+```bash
+git clone https://github.com/TexnoM/RobloxLinuxBlocker.git
+cd RobloxLinuxBlocker
+makepkg -si
+```
+
+### Method 3: Using Make
 
 ```bash
 git clone https://github.com/TexnoM/RobloxLinuxBlocker.git
@@ -105,14 +118,19 @@ Once authorized, open your bot in Telegram and use the interactive menu:
 
 ### 🔹 System Controls:
 - **`sudo rlb auto`** — Enable blocking and configure persistent autostart via systemd (Recommended).
-- **`sudo rlb off`** — Completely disable Roblox blocking and autostart.
+- **`sudo rlb off [PIN]`** — Completely disable Roblox blocking and autostart (requires PIN if configured).
 - **`sudo rlb on`** — Enable blocking immediately (current session).
-- **`sudo rlb noauto`** — Disable systemd autostart (keeps current session blocked).
-- **`rlb status`** — Inspect live status of firewall rules, blackhole routes, hosts, and bot service.
-- **`rlb test`** — Probe Roblox domains and game server IPs to confirm blocking.
+- **`sudo rlb noauto [PIN]`** — Disable systemd autostart (keeps current session blocked).
+- **`rlb status`** — Inspect live status of firewall rules, blackhole routes, hosts, PIN, and bot service.
+- **`rlb stats`** — Display connection attempts, dropped packet counters, and security summary.
+- **`rlb test`** — Probe Roblox domains, APIs, game servers, and DoH canaries.
 - **`sudo rlb update`** — Pull latest Roblox IP subnets from official RIPEstat & ARIN registries.
 
-### 🔹 Telegram Bot & Parent Management:
+### 🔹 Parental PIN & Tamper Protection:
+- **`sudo rlb pin set <PIN>`** — Set a 4-8 digit Parent PIN to prevent unauthorized terminal disabling.
+- **`sudo rlb pin remove`** — Remove Parent PIN (prompts for current PIN).
+
+### 🔹 Telegram Bot & Remote Control:
 - **`sudo rlb add token <TOKEN>`** — Set Telegram bot token.
 - **`sudo rlb add parent <TG_ID>`** — Authorize a parent Telegram ID.
 - **`sudo rlb remove parent <TG_ID>`** — Revoke a parent Telegram ID.

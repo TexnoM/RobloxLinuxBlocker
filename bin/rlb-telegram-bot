@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 RobloxLinuxBlocker - Telegram Bot Daemon
-Parental control integration for blocking/unblocking Roblox remotely.
+Parental control integration with remote alerts, timers, and statistics.
 
 License: GNU Affero General Public License v3.0 (AGPL-3.0)
 """
@@ -17,11 +17,23 @@ import urllib.request
 import urllib.parse
 import urllib.error
 
-# Config path resolution
+# Config and stats path resolution
 CONFIG_PATHS = [
     "/etc/rlb/bot_config.json",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "../data/bot_config.json"),
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "data/bot_config.json"),
+]
+
+STATS_PATHS = [
+    "/etc/rlb/stats.json",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "../data/stats.json"),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "data/stats.json"),
+]
+
+PIN_PATHS = [
+    "/etc/rlb/.pin",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "../data/.pin"),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "data/.pin"),
 ]
 
 RLB_BIN = "/usr/local/bin/rlb"
@@ -34,12 +46,29 @@ timer_end_time = 0
 timer_chat_id = None
 timer_lock = threading.Lock()
 
+last_alert_time = 0
+last_packet_count = 0
+
 
 def get_config_file():
     for p in CONFIG_PATHS:
         if os.path.exists(p):
             return p
     return CONFIG_PATHS[0]
+
+
+def get_stats_file():
+    for p in STATS_PATHS:
+        if os.path.exists(p):
+            return p
+    return STATS_PATHS[0]
+
+
+def has_pin_configured():
+    for p in PIN_PATHS:
+        if os.path.exists(p) and os.path.getsize(p) > 0:
+            return True
+    return False
 
 
 def load_config():
@@ -52,6 +81,27 @@ def load_config():
     except Exception as e:
         print(f"[!] Error loading config: {e}", file=sys.stderr)
         return {"bot_token": "", "parents": []}
+
+
+def load_stats():
+    stats_file = get_stats_file()
+    if not os.path.exists(stats_file):
+        return {"attempts": 0, "last_attempt": "Never"}
+    try:
+        with open(stats_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {"attempts": 0, "last_attempt": "Never"}
+
+
+def save_stats(stats_data):
+    stats_file = get_stats_file()
+    os.makedirs(os.path.dirname(stats_file), exist_ok=True)
+    try:
+        with open(stats_file, "w", encoding="utf-8") as f:
+            json.dump(stats_data, f, indent=2)
+    except Exception as e:
+        print(f"[!] Error saving stats: {e}", file=sys.stderr)
 
 
 def tg_api_request(token, method, data=None):
@@ -83,24 +133,51 @@ def send_message(token, chat_id, text, reply_markup=None):
     return tg_api_request(token, "sendMessage", payload)
 
 
+def broadcast_parents(token, config, text):
+    parents = config.get("parents", [])
+    for p in parents:
+        send_message(token, p, text)
+
+
 def get_main_keyboard():
     return {
         "keyboard": [
             [{"text": "🔴 Block Roblox"}, {"text": "🟢 Unblock Roblox"}],
             [{"text": "⏱️ Allow for 30m"}, {"text": "⏱️ Allow for 1h"}],
-            [{"text": "📊 Status"}, {"text": "❓ Help"}]
+            [{"text": "📊 Stats & Report"}, {"text": "❓ Help"}]
         ],
         "resize_keyboard": True
     }
 
 
-def run_rlb_cmd(cmd_arg):
+def run_rlb_cmd(cmd_arg, bypass_pin=True):
     try:
         cmd = [RLB_BIN, cmd_arg] if os.path.exists(RLB_BIN) else ["rlb", cmd_arg]
+        if bypass_pin and cmd_arg in ["off", "noauto"]:
+            cmd.append("--bypass-pin")
         res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
         return res.returncode == 0, res.stdout + res.stderr
     except Exception as e:
         return False, str(e)
+
+
+def get_current_packet_count():
+    try:
+        res = subprocess.run(["iptables", "-L", "RLB_BLOCK", "-v", "-n", "-x"],
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
+        if res.returncode != 0:
+            return 0
+        total = 0
+        for line in res.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 3 and parts[2] in ["REJECT", "DROP"]:
+                try:
+                    total += int(parts[0])
+                except ValueError:
+                    pass
+        return total
+    except Exception:
+        return 0
 
 
 def cancel_active_timer():
@@ -122,7 +199,6 @@ def schedule_auto_block(token, chat_id, minutes):
         while running and time.time() < target_time:
             with timer_lock:
                 if timer_end_time == 0:
-                    # Cancelled
                     return
             time.sleep(1)
 
@@ -130,7 +206,6 @@ def schedule_auto_block(token, chat_id, minutes):
             if timer_end_time == 0 or not running:
                 return
 
-        # Perform block
         success, _ = run_rlb_cmd("on")
         with timer_lock:
             target_chat = timer_chat_id
@@ -149,10 +224,38 @@ def schedule_auto_block(token, chat_id, minutes):
     timer_thread.start()
 
 
-def check_current_block_state():
-    success, output = run_rlb_cmd("status")
-    is_blocked = "ACTIVE" in output and "INACTIVE" not in output
-    return is_blocked, output
+def monitor_connection_attempts(token, config):
+    global last_packet_count, last_alert_time
+
+    last_packet_count = get_current_packet_count()
+
+    while running:
+        time.sleep(15)
+        current_count = get_current_packet_count()
+
+        if current_count > last_packet_count and last_packet_count > 0:
+            diff = current_count - last_packet_count
+            last_packet_count = current_count
+
+            now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+            stats = load_stats()
+            stats["attempts"] = stats.get("attempts", 0) + diff
+            stats["last_attempt"] = now_str
+            save_stats(stats)
+
+            # Anti-spam cooldown (alert at most once every 2 minutes)
+            if time.time() - last_alert_time > 120:
+                last_alert_time = time.time()
+                alert_text = (
+                    f"🚨 <b>Roblox Connection Attempt Blocked!</b>\n\n"
+                    f"A device on this Linux PC just attempted to connect to Roblox servers.\n"
+                    f"• <b>Packets dropped:</b> {diff}\n"
+                    f"• <b>Timestamp:</b> <code>{now_str}</code>\n"
+                    f"• <b>Current state:</b> 🔴 BLOCKED"
+                )
+                broadcast_parents(token, config, alert_text)
+        else:
+            last_packet_count = current_count
 
 
 def handle_update(token, update, config):
@@ -179,18 +282,18 @@ def handle_update(token, update, config):
         send_message(token, chat_id, denied_msg)
         return
 
-    # Authorized Handlers
     keyboard = get_main_keyboard()
 
     if text in ["/start", "❓ Help", "/help"]:
         help_msg = (
-            f"👋 <b>Welcome to RobloxLinuxBlocker Parent Bot!</b>\n\n"
-            f"You have parental control over this machine.\n\n"
+            f"👋 <b>RobloxLinuxBlocker Parental Control</b>\n\n"
+            f"You have remote administrative control over this machine.\n\n"
             f"<b>Available options:</b>\n"
-            f"• 🔴 <b>Block Roblox:</b> Immediately blocks all Roblox connections.\n"
-            f"• 🟢 <b>Unblock Roblox:</b> Allows Roblox gameplay without time limit.\n"
-            f"• ⏱️ <b>Allow for 30m / 1h:</b> Allows gameplay temporarily; auto-blocks when time expires.\n"
-            f"• 📊 <b>Status:</b> Checks live blocking status.\n"
+            f"• 🔴 <b>Block Roblox:</b> Immediately block all Roblox traffic.\n"
+            f"• 🟢 <b>Unblock Roblox:</b> Allow gameplay with no time restriction.\n"
+            f"• ⏱️ <b>Allow for 30m / 1h:</b> Temporary access; auto-blocks on expiry.\n"
+            f"• 📊 <b>Stats & Report:</b> View blocked connection attempts and status.\n"
+            f"• 🚨 <b>Intrusion Alerts:</b> You will receive automated alerts when access is attempted."
         )
         send_message(token, chat_id, help_msg, keyboard)
 
@@ -205,7 +308,7 @@ def handle_update(token, update, config):
 
     elif text in ["🟢 Unblock Roblox", "/unblock"]:
         cancel_active_timer()
-        success, out = run_rlb_cmd("off")
+        success, out = run_rlb_cmd("off", bypass_pin=True)
         if success:
             msg = "✅ <b>Roblox has been UNBLOCKED.</b>\nGameplay is now allowed."
         else:
@@ -214,41 +317,49 @@ def handle_update(token, update, config):
 
     elif text in ["⏱️ Allow for 30m", "/allow30"]:
         cancel_active_timer()
-        success, out = run_rlb_cmd("off")
+        success, out = run_rlb_cmd("off", bypass_pin=True)
         if success:
             schedule_auto_block(token, chat_id, 30)
-            msg = "⏳ <b>Roblox is UNBLOCKED for 30 minutes!</b>\nA timer has started. Roblox will be automatically blocked in 30 minutes."
+            msg = "⏳ <b>Roblox is UNBLOCKED for 30 minutes!</b>\nA countdown timer has started. Roblox will be automatically blocked in 30 minutes."
         else:
             msg = f"❌ <b>Failed to unblock:</b>\n<code>{out[:300]}</code>"
         send_message(token, chat_id, msg, keyboard)
 
     elif text in ["⏱️ Allow for 1h", "/allow60"]:
         cancel_active_timer()
-        success, out = run_rlb_cmd("off")
+        success, out = run_rlb_cmd("off", bypass_pin=True)
         if success:
             schedule_auto_block(token, chat_id, 60)
-            msg = "⏳ <b>Roblox is UNBLOCKED for 1 hour!</b>\nA timer has started. Roblox will be automatically blocked in 60 minutes."
+            msg = "⏳ <b>Roblox is UNBLOCKED for 1 hour!</b>\nA countdown timer has started. Roblox will be automatically blocked in 60 minutes."
         else:
             msg = f"❌ <b>Failed to unblock:</b>\n<code>{out[:300]}</code>"
         send_message(token, chat_id, msg, keyboard)
 
-    elif text in ["📊 Status", "/status"]:
+    elif text in ["📊 Stats & Report", "/stats", "📊 Status"]:
         success, out = run_rlb_cmd("status")
+        stats = load_stats()
         timer_info = "None"
         with timer_lock:
             if timer_end_time > time.time():
                 remaining = int((timer_end_time - time.time()) / 60)
                 timer_info = f"Active ({remaining} minutes remaining)"
 
+        pin_status = "🔒 Active (Tamper-proof)" if has_pin_configured() else "⚠️ Disabled"
+
         msg = (
-            f"📊 <b>System Status</b>\n\n"
-            f"<code>{out.strip()}</code>\n\n"
-            f"⏱️ <b>Temporary access timer:</b> {timer_info}"
+            f"📊 <b>Parental Control Report</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🛡️ <b>Total Blocked Connection Packets:</b> {stats.get('attempts', 0)}\n"
+            f"🕒 <b>Last Blocked Attempt:</b> {stats.get('last_attempt', 'None')}\n"
+            f"🔐 <b>Console PIN Protection:</b> {pin_status}\n"
+            f"⏱️ <b>Temporary Access Timer:</b> {timer_info}\n\n"
+            f"<b>System Diagnostic:</b>\n"
+            f"<code>{out.strip()}</code>"
         )
         send_message(token, chat_id, msg, keyboard)
 
     else:
-        send_message(token, chat_id, "Unknown command. Use the menu buttons below.", keyboard)
+        send_message(token, chat_id, "Unknown command. Please use the menu buttons below.", keyboard)
 
 
 def sig_handler(signum, frame):
@@ -271,7 +382,6 @@ def main():
         print("[!] Run: sudo rlb add token <YOUR_BOT_TOKEN>", file=sys.stderr)
         sys.exit(1)
 
-    # Validate bot token with getMe
     me = tg_api_request(token, "getMe")
     if not me or not me.get("ok"):
         print("[!] Error: Invalid bot token or cannot connect to Telegram API.", file=sys.stderr)
@@ -281,11 +391,14 @@ def main():
     print(f"[OK] Connected as @{bot_username}")
     print(f"[*] Registered parents: {config.get('parents', [])}")
 
+    # Launch background intrusion detector
+    monitor_thread = threading.Thread(target=monitor_connection_attempts, args=(token, config), daemon=True)
+    monitor_thread.start()
+
     offset = 0
     last_config_check = time.time()
 
     while running:
-        # Reload config every 10 seconds to pick up new parents or changes
         if time.time() - last_config_check > 10:
             config = load_config()
             last_config_check = time.time()

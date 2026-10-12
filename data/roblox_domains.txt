@@ -71,3 +71,6 @@ sitetest2.robloxlabs.com
 sitetest3.robloxlabs.com
 roblox.cn
 www.roblox.cn
+
+# DNS-over-HTTPS (DoH) Canary Domains (Forces browsers to respect /etc/hosts)
+use-application-dns.net

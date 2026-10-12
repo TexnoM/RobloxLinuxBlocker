@@ -24,7 +24,7 @@ fi
 # 1. Unblock active rules and stop bots
 echo -e "${CYAN}[1/4]${NC} Disabling active blocking rules and stopping services..."
 if [[ -x "/usr/local/bin/rlb" ]]; then
-    /usr/local/bin/rlb off 2>/dev/null || true
+    /usr/local/bin/rlb off --bypass-pin 2>/dev/null || true
 fi
 
 pkill -f "rlb-telegram-bot" 2>/dev/null || true
@@ -42,6 +42,7 @@ fi
 
 # 3. Clean up /etc/hosts
 echo -e "${CYAN}[3/4]${NC} Cleaning up /etc/hosts entries..."
+chattr -i /etc/hosts 2>/dev/null || true
 if grep -q "# --- ROBLOX-LINUX-BLOCKER-START ---" /etc/hosts 2>/dev/null; then
     sed -i '/# --- ROBLOX-LINUX-BLOCKER-START ---/,/# --- ROBLOX-LINUX-BLOCKER-END ---/d' /etc/hosts
 fi

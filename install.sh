@@ -38,6 +38,11 @@ if [[ ! -f "/etc/rlb/bot_config.json" ]]; then
     chmod 600 /etc/rlb/bot_config.json
 fi
 
+if [[ ! -f "/etc/rlb/stats.json" ]]; then
+    cp -f "${SCRIPT_DIR}/data/stats.json" /etc/rlb/stats.json
+    chmod 644 /etc/rlb/stats.json
+fi
+
 # 3. Install CLI and Telegram bot tools
 echo -e "${CYAN}[3/5]${NC} Installing executables to /usr/local/bin..."
 cp -f "${SCRIPT_DIR}/bin/rlb" /usr/local/bin/rlb
@@ -68,10 +73,11 @@ echo -e "${GREEN}${BOLD}✔ RobloxLinuxBlocker successfully installed!${NC}"
 echo -e "The ${BOLD}rlb${NC} command is now available system-wide."
 echo ""
 echo -e "${BOLD}Recommended next steps:${NC}"
-echo -e "  ${GREEN}sudo rlb auto${NC}                    - Enable blocking and setup autostart on boot (RECOMMENDED)"
-echo -e "  ${YELLOW}sudo rlb status${NC}                  - Inspect current blocking and bot status"
+echo -e "  ${GREEN}sudo rlb auto${NC}                    - Enable blocking and setup autostart on boot"
+echo -e "  ${YELLOW}sudo rlb pin set <PIN>${NC}           - Configure Parent PIN to prevent unauthorized disabling"
 echo -e "  ${CYAN}sudo rlb add token <TOKEN>${NC}       - Configure Telegram Bot token"
 echo -e "  ${CYAN}sudo rlb add parent <TG_ID>${NC}      - Authorize parent Telegram user ID"
 echo -e "  ${CYAN}sudo rlb bot start${NC}               - Start the Telegram Bot parental control daemon"
-echo -e "  ${BOLD}rlb help${NC}                         - Show command help"
+echo -e "  ${BLUE}sudo rlb stats${NC}                   - View blocked connection statistics"
+echo -e "  ${BOLD}rlb help${NC}                         - Show all command options"
 echo ""

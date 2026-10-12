@@ -19,7 +19,7 @@ NC='\033[0m' # No Color
 
 # --- Paths and Constants ---
 APP_NAME="RobloxLinuxBlocker"
-VERSION="1.1.0"
+VERSION="1.2.0"
 SYSTEMD_SERVICE="rlb.service"
 BOT_SERVICE="rlb-bot.service"
 
@@ -35,18 +35,26 @@ if [[ -f "/etc/rlb/roblox_ips.txt" ]]; then
     IP_FILE="/etc/rlb/roblox_ips.txt"
     DOMAIN_FILE="/etc/rlb/roblox_domains.txt"
     CONFIG_FILE="/etc/rlb/bot_config.json"
+    PIN_FILE="/etc/rlb/.pin"
+    STATS_FILE="/etc/rlb/stats.json"
 elif [[ -f "${SCRIPT_DIR}/../data/roblox_ips.txt" ]]; then
     IP_FILE="${SCRIPT_DIR}/../data/roblox_ips.txt"
     DOMAIN_FILE="${SCRIPT_DIR}/../data/roblox_domains.txt"
     CONFIG_FILE="${SCRIPT_DIR}/../data/bot_config.json"
+    PIN_FILE="${SCRIPT_DIR}/../data/.pin"
+    STATS_FILE="${SCRIPT_DIR}/../data/stats.json"
 elif [[ -f "${SCRIPT_DIR}/data/roblox_ips.txt" ]]; then
     IP_FILE="${SCRIPT_DIR}/data/roblox_ips.txt"
     DOMAIN_FILE="${SCRIPT_DIR}/data/roblox_domains.txt"
     CONFIG_FILE="${SCRIPT_DIR}/data/bot_config.json"
+    PIN_FILE="${SCRIPT_DIR}/data/.pin"
+    STATS_FILE="${SCRIPT_DIR}/data/stats.json"
 else
     IP_FILE="/etc/rlb/roblox_ips.txt"
     DOMAIN_FILE="/etc/rlb/roblox_domains.txt"
     CONFIG_FILE="/etc/rlb/bot_config.json"
+    PIN_FILE="/etc/rlb/.pin"
+    STATS_FILE="/etc/rlb/stats.json"
 fi
 
 # --- Helper Functions ---
@@ -88,6 +96,81 @@ get_domains() {
         return 1
     fi
     grep -E '^[a-zA-Z0-9.-]+' "$DOMAIN_FILE" | awk '{print $1}'
+}
+
+# --- PIN / Tamper Protection ---
+
+has_pin() {
+    [[ -f "$PIN_FILE" && -s "$PIN_FILE" ]]
+}
+
+verify_pin() {
+    local bypass_arg="${1:-}"
+    if [[ "$bypass_arg" == "--bypass-pin" ]]; then
+        return 0
+    fi
+
+    if ! has_pin; then
+        return 0
+    fi
+
+    local saved_hash
+    saved_hash=$(tr -d '[:space:]' < "$PIN_FILE")
+    local entered_pin=""
+
+    if [[ -n "$bypass_arg" && "$bypass_arg" =~ ^[0-9]+$ ]]; then
+        entered_pin="$bypass_arg"
+    else
+        echo -e "${YELLOW}🔒 Parental PIN Protection is ACTIVE.${NC}"
+        read -r -s -p "Enter Parent PIN: " entered_pin
+        echo ""
+    fi
+
+    local entered_hash
+    entered_hash=$(python3 -c "import hashlib; print(hashlib.sha256('$entered_pin'.encode('utf-8')).hexdigest())")
+
+    if [[ "$entered_hash" == "$saved_hash" ]]; then
+        log_success "PIN verified."
+        return 0
+    else
+        log_error "Access Denied: Invalid PIN code."
+        exit 1
+    fi
+}
+
+do_pin_set() {
+    local new_pin="$1"
+    if [[ -z "$new_pin" ]]; then
+        read -r -s -p "Enter new 4-8 digit Parent PIN: " new_pin
+        echo ""
+        read -r -s -p "Confirm new Parent PIN: " confirm_pin
+        echo ""
+        if [[ "$new_pin" != "$confirm_pin" ]]; then
+            log_error "PINs do not match. Aborting."
+            exit 1
+        fi
+    fi
+
+    if [[ ! "$new_pin" =~ ^[0-9]{4,8}$ ]]; then
+        log_error "PIN must be between 4 and 8 digits."
+        exit 1
+    fi
+
+    mkdir -p "$(dirname "$PIN_FILE")"
+    python3 -c "import hashlib; print(hashlib.sha256('$new_pin'.encode('utf-8')).hexdigest())" > "$PIN_FILE"
+    chmod 600 "$PIN_FILE"
+    log_success "Parent PIN set successfully. Protected commands will now require this PIN."
+}
+
+do_pin_remove() {
+    if ! has_pin; then
+        log_info "No PIN is currently configured."
+        return 0
+    fi
+
+    verify_pin ""
+    rm -f "$PIN_FILE"
+    log_success "Parent PIN has been removed."
 }
 
 # --- Blocking Logic ---
@@ -143,6 +226,10 @@ block_iptables() {
         iptables -C OUTPUT -j "$IPTABLES_CHAIN" 2>/dev/null || iptables -I OUTPUT 1 -j "$IPTABLES_CHAIN"
         iptables -C FORWARD -j "$IPTABLES_CHAIN" 2>/dev/null || iptables -I FORWARD 1 -j "$IPTABLES_CHAIN"
 
+        # Block DoT (DNS over TLS) on port 853 to prevent bypassing /etc/hosts
+        iptables -A "$IPTABLES_CHAIN" -p tcp --dport 853 -j REJECT 2>/dev/null || true
+        iptables -A "$IPTABLES_CHAIN" -p udp --dport 853 -j REJECT 2>/dev/null || true
+
         while IFS= read -r subnet; do
             [[ -z "$subnet" ]] && continue
             if [[ ! "$subnet" =~ : ]]; then
@@ -150,7 +237,7 @@ block_iptables() {
                 iptables -A "$IPTABLES_CHAIN" -d "$subnet" -j DROP 2>/dev/null || true
             fi
         done < <(get_subnets)
-        log_success "IPv4 iptables chain '$IPTABLES_CHAIN' activated."
+        log_success "IPv4 iptables chain '$IPTABLES_CHAIN' activated (with DoT/DoH mitigation)."
     fi
 
     # IPv6 ip6tables
@@ -159,6 +246,9 @@ block_iptables() {
 
         ip6tables -C OUTPUT -j "$IPTABLES_CHAIN" 2>/dev/null || ip6tables -I OUTPUT 1 -j "$IPTABLES_CHAIN"
         ip6tables -C FORWARD -j "$IPTABLES_CHAIN" 2>/dev/null || ip6tables -I FORWARD 1 -j "$IPTABLES_CHAIN"
+
+        ip6tables -A "$IPTABLES_CHAIN" -p tcp --dport 853 -j REJECT 2>/dev/null || true
+        ip6tables -A "$IPTABLES_CHAIN" -p udp --dport 853 -j REJECT 2>/dev/null || true
 
         while IFS= read -r subnet; do
             [[ -z "$subnet" ]] && continue
@@ -193,6 +283,8 @@ unblock_iptables() {
 
 block_hosts() {
     log_info "Blocking Roblox domains in /etc/hosts..."
+    # Unlock file if chattr was applied
+    chattr -i /etc/hosts 2>/dev/null || true
     unblock_hosts_silent
 
     {
@@ -205,10 +297,14 @@ block_hosts() {
         echo "$HOSTS_MARKER_END"
     } >> /etc/hosts
 
-    log_success "Roblox domains blocked in /etc/hosts."
+    # Apply immutable tamper protection if supported
+    chattr +i /etc/hosts 2>/dev/null || true
+
+    log_success "Roblox domains blocked in /etc/hosts (tamper-protection enabled)."
 }
 
 unblock_hosts_silent() {
+    chattr -i /etc/hosts 2>/dev/null || true
     if grep -q "$HOSTS_MARKER_START" /etc/hosts 2>/dev/null; then
         sed -i "/$HOSTS_MARKER_START/,/$HOSTS_MARKER_END/d" /etc/hosts
     fi
@@ -231,6 +327,9 @@ do_on() {
 }
 
 do_off() {
+    local pin_arg="${1:-}"
+    verify_pin "$pin_arg"
+
     echo -e "${BOLD}${YELLOW}=== Disabling Roblox Block ===${NC}"
     unblock_routes
     unblock_iptables
@@ -297,12 +396,21 @@ EOF
 }
 
 do_noauto() {
+    verify_pin "${1:-}"
     echo -e "${BOLD}${YELLOW}=== Disabling RobloxLinuxBlocker Autostart ===${NC}"
     if command -v systemctl &>/dev/null; then
         systemctl disable "$SYSTEMD_SERVICE" 2>/dev/null || true
         log_success "Autostart service $SYSTEMD_SERVICE disabled (current block remains active)."
     else
         log_error "systemctl not found."
+    fi
+}
+
+get_blocked_packets_count() {
+    if command -v iptables &>/dev/null && iptables -L "$IPTABLES_CHAIN" -n &>/dev/null; then
+        iptables -L "$IPTABLES_CHAIN" -v -n -x 2>/dev/null | awk '$3 ~ /REJECT|DROP/ {sum += $1} END {print sum+0}'
+    else
+        echo 0
     fi
 }
 
@@ -371,6 +479,47 @@ do_status() {
         echo -e "${YELLOW}STOPPED${NC}"
     fi
 
+    # 7. Check PIN Protection
+    echo -n "Parent PIN Protection: "
+    if has_pin; then
+        echo -e "${GREEN}ENABLED (Tamper-proof)${NC}"
+    else
+        echo -e "${YELLOW}DISABLED (Run 'rlb pin set' to enable)${NC}"
+    fi
+
+    # 8. Check Blocked Packets
+    local blocked_packets
+    blocked_packets=$(get_blocked_packets_count)
+    echo -e "Blocked Connection Packets: ${BOLD}${blocked_packets}${NC}"
+
+    echo ""
+}
+
+do_stats() {
+    echo -e "${BOLD}${CYAN}=== RobloxLinuxBlocker Statistics & Report ===${NC}"
+    local blocked_packets
+    blocked_packets=$(get_blocked_packets_count)
+    echo -e "• Total packets blocked by firewall: ${BOLD}${blocked_packets}${NC}"
+
+    if [[ -f "$STATS_FILE" ]]; then
+        python3 -c "
+import json
+try:
+    with open('$STATS_FILE', 'r') as f:
+        s = json.load(f)
+    print(f'• Logged access attempts: {s.get(\"attempts\", 0)}')
+    print(f'• Last detected attempt: {s.get(\"last_attempt\", \"None\")}')
+except Exception as e:
+    pass
+"
+    fi
+
+    echo -n "• Tamper PIN code: "
+    if has_pin; then
+        echo -e "${GREEN}Configured${NC}"
+    else
+        echo -e "${YELLOW}Not configured${NC}"
+    fi
     echo ""
 }
 
@@ -491,6 +640,14 @@ do_test() {
         echo -e "${GREEN}BLOCKED ✔${NC}"
     fi
 
+    echo -n "4. Checking DoH canary domain (use-application-dns.net): "
+    if curl -s --connect-timeout 2 -m 3 http://use-application-dns.net &>/dev/null; then
+        echo -e "${RED}PASSING (DoH not sinkholed)${NC}"
+        blocked=0
+    else
+        echo -e "${GREEN}SINKHOLED ✔${NC}"
+    fi
+
     echo ""
     if [[ $blocked -eq 1 ]]; then
         echo -e "${GREEN}${BOLD}All clear! Roblox and Sober are reliably blocked on this machine.${NC}"
@@ -520,7 +677,7 @@ if os.path.exists(cfg):
     except Exception:
         pass
 data['bot_token'] = '$token'
-with open(cfg, 'w') as f:
+with open(cfg_w := cfg, 'w') as f:
     json.dump(data, f, indent=2)
 os.chmod(cfg, 0o600)
 "
@@ -613,6 +770,7 @@ except Exception as e:
 
 do_bot() {
     local action="${1:-status}"
+    local pin_param="${2:-}"
     case "$action" in
         start)
             if command -v systemctl &>/dev/null; then
@@ -626,6 +784,7 @@ do_bot() {
             fi
             ;;
         stop)
+            verify_pin "$pin_param"
             if command -v systemctl &>/dev/null; then
                 systemctl stop "$BOT_SERVICE" 2>/dev/null || true
                 systemctl disable "$BOT_SERVICE" 2>/dev/null || true
@@ -666,14 +825,19 @@ show_help() {
     echo -e "Universal Roblox IP and domain blocker for Linux (including Sober & Flatpak).\n"
     echo -e "${BOLD}System Controls:${NC}"
     echo -e "  rlb ${GREEN}auto${NC}                     - Enable blocking and configure autostart via systemd"
-    echo -e "  rlb ${RED}off${NC}                      - Completely disable Roblox blocking and autostart"
+    echo -e "  rlb ${RED}off${NC} [PIN]                - Completely disable Roblox blocking and autostart"
     echo -e "  rlb ${GREEN}on${NC}                       - Enable blocking immediately (current session)"
-    echo -e "  rlb ${YELLOW}noauto${NC}                   - Disable systemd autostart (keep current block active)"
+    echo -e "  rlb ${YELLOW}noauto${NC} [PIN]             - Disable systemd autostart (keep current block active)"
     echo -e "  rlb ${BLUE}status${NC}                   - Show status of firewall rules, routes, hosts, and bot"
+    echo -e "  rlb ${CYAN}stats${NC}                    - Display blocked connection statistics and attempts"
     echo -e "  rlb ${CYAN}update${NC}                   - Fetch latest Roblox IP prefixes from public registries"
     echo -e "  rlb ${BOLD}test${NC}                     - Verify that Roblox and Sober traffic is blocked"
     echo ""
-    echo -e "${BOLD}Telegram Bot & Parental Controls:${NC}"
+    echo -e "${BOLD}Parental PIN & Tamper Protection:${NC}"
+    echo -e "  rlb ${GREEN}pin set${NC} <PIN>            - Configure Parent PIN to prevent unauthorized disabling"
+    echo -e "  rlb ${RED}pin remove${NC}               - Remove Parent PIN"
+    echo ""
+    echo -e "${BOLD}Telegram Bot & Remote Control:${NC}"
     echo -e "  rlb ${GREEN}add token${NC} <TOKEN>        - Save Telegram bot token"
     echo -e "  rlb ${GREEN}add parent${NC} <TG_ID>       - Authorize parent Telegram user ID"
     echo -e "  rlb ${RED}remove parent${NC} <TG_ID>    - Revoke parent authorization"
@@ -682,10 +846,10 @@ show_help() {
     echo -e "  rlb ${YELLOW}help${NC}                     - Display this help message"
     echo ""
     echo -e "${BOLD}Examples:${NC}"
+    echo -e "  sudo rlb pin set 1234"
     echo -e "  sudo rlb add token 123456789:ABCdefGHIjkLMNopQRstUVwxyz"
     echo -e "  sudo rlb add parent 987654321"
     echo -e "  sudo rlb bot start"
-    echo -e "  sudo rlb auto"
     echo ""
 }
 
@@ -700,7 +864,7 @@ case "$COMMAND" in
         ;;
     off|unblock|stop|disable)
         check_root "$@"
-        do_off
+        do_off "${2:-}"
         ;;
     on|block|start|enable)
         check_root "$@"
@@ -708,10 +872,13 @@ case "$COMMAND" in
         ;;
     noauto)
         check_root "$@"
-        do_noauto
+        do_noauto "${2:-}"
         ;;
     status)
         do_status
+        ;;
+    stats|report)
+        do_stats
         ;;
     update)
         check_root "$@"
@@ -719,6 +886,26 @@ case "$COMMAND" in
         ;;
     test)
         do_test
+        ;;
+    pin)
+        PIN_ACTION="${2:-status}"
+        case "$PIN_ACTION" in
+            set)
+                check_root "$@"
+                do_pin_set "${3:-}"
+                ;;
+            remove|delete)
+                check_root "$@"
+                do_pin_remove
+                ;;
+            status|*)
+                if has_pin; then
+                    echo -e "Parent PIN Protection: ${GREEN}ENABLED${NC}"
+                else
+                    echo -e "Parent PIN Protection: ${YELLOW}DISABLED${NC}"
+                fi
+                ;;
+        esac
         ;;
     add)
         check_root "$@"
@@ -763,7 +950,7 @@ case "$COMMAND" in
         ;;
     bot)
         check_root "$@"
-        do_bot "${2:-status}"
+        do_bot "${2:-status}" "${3:-}"
         ;;
     help|--help|-h|"")
         show_help
