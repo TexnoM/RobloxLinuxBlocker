@@ -21,18 +21,21 @@ if [[ $EUID -ne 0 ]]; then
     exec sudo bash "$0" "$@"
 fi
 
-# 1. Unblock active rules
-echo -e "${CYAN}[1/4]${NC} Disabling active blocking rules and stopping service..."
+# 1. Unblock active rules and stop bots
+echo -e "${CYAN}[1/4]${NC} Disabling active blocking rules and stopping services..."
 if [[ -x "/usr/local/bin/rlb" ]]; then
     /usr/local/bin/rlb off 2>/dev/null || true
 fi
 
-# 2. Disable and remove systemd service
-echo -e "${CYAN}[2/4]${NC} Removing systemd service..."
+pkill -f "rlb-telegram-bot" 2>/dev/null || true
+
+# 2. Disable and remove systemd services
+echo -e "${CYAN}[2/4]${NC} Removing systemd services..."
 if command -v systemctl &>/dev/null; then
     systemctl disable --now rlb.service 2>/dev/null || true
+    systemctl disable --now rlb-bot.service 2>/dev/null || true
 fi
-rm -f /etc/systemd/system/rlb.service
+rm -f /etc/systemd/system/rlb.service /etc/systemd/system/rlb-bot.service
 if command -v systemctl &>/dev/null; then
     systemctl daemon-reload 2>/dev/null || true
 fi
@@ -44,10 +47,10 @@ if grep -q "# --- ROBLOX-LINUX-BLOCKER-START ---" /etc/hosts 2>/dev/null; then
 fi
 
 # 4. Remove files and directories
-echo -e "${CYAN}[4/4]${NC} Removing executable and configuration files..."
-rm -f /usr/local/bin/rlb
+echo -e "${CYAN}[4/4]${NC} Removing executables and configuration files..."
+rm -f /usr/local/bin/rlb /usr/local/bin/rlb-telegram-bot
 rm -rf /etc/rlb
 
 echo ""
 echo -e "${GREEN}${BOLD}✔ RobloxLinuxBlocker has been completely removed from your system.${NC}"
-echo -e "All firewall rules, network routes, hosts entries, and autostart services have been restored.\n"
+echo -e "All firewall rules, network routes, hosts entries, bot daemons, and autostart services have been restored.\n"

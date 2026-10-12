@@ -1,0 +1,309 @@
+#!/usr/bin/env python3
+"""
+RobloxLinuxBlocker - Telegram Bot Daemon
+Parental control integration for blocking/unblocking Roblox remotely.
+
+License: GNU Affero General Public License v3.0 (AGPL-3.0)
+"""
+
+import sys
+import os
+import json
+import time
+import signal
+import threading
+import subprocess
+import urllib.request
+import urllib.parse
+import urllib.error
+
+# Config path resolution
+CONFIG_PATHS = [
+    "/etc/rlb/bot_config.json",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "../data/bot_config.json"),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "data/bot_config.json"),
+]
+
+RLB_BIN = "/usr/local/bin/rlb"
+if not os.path.exists(RLB_BIN):
+    RLB_BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rlb")
+
+running = True
+timer_thread = None
+timer_end_time = 0
+timer_chat_id = None
+timer_lock = threading.Lock()
+
+
+def get_config_file():
+    for p in CONFIG_PATHS:
+        if os.path.exists(p):
+            return p
+    return CONFIG_PATHS[0]
+
+
+def load_config():
+    config_file = get_config_file()
+    if not os.path.exists(config_file):
+        return {"bot_token": "", "parents": []}
+    try:
+        with open(config_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"[!] Error loading config: {e}", file=sys.stderr)
+        return {"bot_token": "", "parents": []}
+
+
+def tg_api_request(token, method, data=None):
+    url = f"https://api.telegram.org/bot{token}/{method}"
+    headers = {"Content-Type": "application/json"}
+    body = json.dumps(data).encode("utf-8") if data else None
+
+    req = urllib.request.Request(url, data=body, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=35) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        err_msg = e.read().decode("utf-8")
+        print(f"[!] Telegram HTTP Error ({method}): {err_msg}", file=sys.stderr)
+        return None
+    except Exception as e:
+        print(f"[!] Telegram API error ({method}): {e}", file=sys.stderr)
+        return None
+
+
+def send_message(token, chat_id, text, reply_markup=None):
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML"
+    }
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    return tg_api_request(token, "sendMessage", payload)
+
+
+def get_main_keyboard():
+    return {
+        "keyboard": [
+            [{"text": "🔴 Block Roblox"}, {"text": "🟢 Unblock Roblox"}],
+            [{"text": "⏱️ Allow for 30m"}, {"text": "⏱️ Allow for 1h"}],
+            [{"text": "📊 Status"}, {"text": "❓ Help"}]
+        ],
+        "resize_keyboard": True
+    }
+
+
+def run_rlb_cmd(cmd_arg):
+    try:
+        cmd = [RLB_BIN, cmd_arg] if os.path.exists(RLB_BIN) else ["rlb", cmd_arg]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+        return res.returncode == 0, res.stdout + res.stderr
+    except Exception as e:
+        return False, str(e)
+
+
+def cancel_active_timer():
+    global timer_end_time, timer_chat_id
+    with timer_lock:
+        timer_end_time = 0
+        timer_chat_id = None
+
+
+def schedule_auto_block(token, chat_id, minutes):
+    global timer_end_time, timer_chat_id, timer_thread
+
+    with timer_lock:
+        timer_chat_id = chat_id
+        timer_end_time = time.time() + (minutes * 60)
+
+    def worker():
+        target_time = timer_end_time
+        while running and time.time() < target_time:
+            with timer_lock:
+                if timer_end_time == 0:
+                    # Cancelled
+                    return
+            time.sleep(1)
+
+        with timer_lock:
+            if timer_end_time == 0 or not running:
+                return
+
+        # Perform block
+        success, _ = run_rlb_cmd("on")
+        with timer_lock:
+            target_chat = timer_chat_id
+            timer_end_time = 0
+            timer_chat_id = None
+
+        if target_chat and success:
+            send_message(
+                token,
+                target_chat,
+                "⏰ <b>Time's up!</b>\nRoblox has been automatically <b>BLOCKED</b>.",
+                get_main_keyboard()
+            )
+
+    timer_thread = threading.Thread(target=worker, daemon=True)
+    timer_thread.start()
+
+
+def check_current_block_state():
+    success, output = run_rlb_cmd("status")
+    is_blocked = "ACTIVE" in output and "INACTIVE" not in output
+    return is_blocked, output
+
+
+def handle_update(token, update, config):
+    message = update.get("message")
+    if not message:
+        return
+
+    chat_id = message.get("chat", {}).get("id")
+    user = message.get("from", {})
+    user_id = user.get("id")
+    text = (message.get("text") or "").strip()
+
+    parents = [int(p) for p in config.get("parents", [])]
+
+    # Authorization Check
+    if user_id not in parents:
+        denied_msg = (
+            f"⛔ <b>Access Denied</b>\n\n"
+            f"You are not registered as a parent on this system.\n"
+            f"Your Telegram ID: <code>{user_id}</code>\n\n"
+            f"To authorize this account, run on the Linux machine:\n"
+            f"<code>sudo rlb add parent {user_id}</code>"
+        )
+        send_message(token, chat_id, denied_msg)
+        return
+
+    # Authorized Handlers
+    keyboard = get_main_keyboard()
+
+    if text in ["/start", "❓ Help", "/help"]:
+        help_msg = (
+            f"👋 <b>Welcome to RobloxLinuxBlocker Parent Bot!</b>\n\n"
+            f"You have parental control over this machine.\n\n"
+            f"<b>Available options:</b>\n"
+            f"• 🔴 <b>Block Roblox:</b> Immediately blocks all Roblox connections.\n"
+            f"• 🟢 <b>Unblock Roblox:</b> Allows Roblox gameplay without time limit.\n"
+            f"• ⏱️ <b>Allow for 30m / 1h:</b> Allows gameplay temporarily; auto-blocks when time expires.\n"
+            f"• 📊 <b>Status:</b> Checks live blocking status.\n"
+        )
+        send_message(token, chat_id, help_msg, keyboard)
+
+    elif text in ["🔴 Block Roblox", "/block"]:
+        cancel_active_timer()
+        success, out = run_rlb_cmd("on")
+        if success:
+            msg = "🚫 <b>Roblox is now BLOCKED!</b>\nAll network connections and Sober sessions have been cut off."
+        else:
+            msg = f"❌ <b>Failed to block Roblox:</b>\n<code>{out[:300]}</code>"
+        send_message(token, chat_id, msg, keyboard)
+
+    elif text in ["🟢 Unblock Roblox", "/unblock"]:
+        cancel_active_timer()
+        success, out = run_rlb_cmd("off")
+        if success:
+            msg = "✅ <b>Roblox has been UNBLOCKED.</b>\nGameplay is now allowed."
+        else:
+            msg = f"❌ <b>Failed to unblock Roblox:</b>\n<code>{out[:300]}</code>"
+        send_message(token, chat_id, msg, keyboard)
+
+    elif text in ["⏱️ Allow for 30m", "/allow30"]:
+        cancel_active_timer()
+        success, out = run_rlb_cmd("off")
+        if success:
+            schedule_auto_block(token, chat_id, 30)
+            msg = "⏳ <b>Roblox is UNBLOCKED for 30 minutes!</b>\nA timer has started. Roblox will be automatically blocked in 30 minutes."
+        else:
+            msg = f"❌ <b>Failed to unblock:</b>\n<code>{out[:300]}</code>"
+        send_message(token, chat_id, msg, keyboard)
+
+    elif text in ["⏱️ Allow for 1h", "/allow60"]:
+        cancel_active_timer()
+        success, out = run_rlb_cmd("off")
+        if success:
+            schedule_auto_block(token, chat_id, 60)
+            msg = "⏳ <b>Roblox is UNBLOCKED for 1 hour!</b>\nA timer has started. Roblox will be automatically blocked in 60 minutes."
+        else:
+            msg = f"❌ <b>Failed to unblock:</b>\n<code>{out[:300]}</code>"
+        send_message(token, chat_id, msg, keyboard)
+
+    elif text in ["📊 Status", "/status"]:
+        success, out = run_rlb_cmd("status")
+        timer_info = "None"
+        with timer_lock:
+            if timer_end_time > time.time():
+                remaining = int((timer_end_time - time.time()) / 60)
+                timer_info = f"Active ({remaining} minutes remaining)"
+
+        msg = (
+            f"📊 <b>System Status</b>\n\n"
+            f"<code>{out.strip()}</code>\n\n"
+            f"⏱️ <b>Temporary access timer:</b> {timer_info}"
+        )
+        send_message(token, chat_id, msg, keyboard)
+
+    else:
+        send_message(token, chat_id, "Unknown command. Use the menu buttons below.", keyboard)
+
+
+def sig_handler(signum, frame):
+    global running
+    print(f"\n[*] Received signal {signum}, stopping bot daemon...")
+    running = False
+
+
+def main():
+    global running
+    signal.signal(signal.SIGINT, sig_handler)
+    signal.signal(signal.SIGTERM, sig_handler)
+
+    print("[*] Starting RobloxLinuxBlocker Telegram Bot Daemon...")
+    config = load_config()
+    token = config.get("bot_token", "").strip()
+
+    if not token:
+        print("[!] Error: bot_token is not configured.", file=sys.stderr)
+        print("[!] Run: sudo rlb add token <YOUR_BOT_TOKEN>", file=sys.stderr)
+        sys.exit(1)
+
+    # Validate bot token with getMe
+    me = tg_api_request(token, "getMe")
+    if not me or not me.get("ok"):
+        print("[!] Error: Invalid bot token or cannot connect to Telegram API.", file=sys.stderr)
+        sys.exit(1)
+
+    bot_username = me.get("result", {}).get("username", "UnknownBot")
+    print(f"[OK] Connected as @{bot_username}")
+    print(f"[*] Registered parents: {config.get('parents', [])}")
+
+    offset = 0
+    last_config_check = time.time()
+
+    while running:
+        # Reload config every 10 seconds to pick up new parents or changes
+        if time.time() - last_config_check > 10:
+            config = load_config()
+            last_config_check = time.time()
+
+        try:
+            updates = tg_api_request(token, "getUpdates", {"offset": offset, "timeout": 20})
+            if updates and updates.get("ok"):
+                for u in updates.get("result", []):
+                    offset = u.get("update_id", 0) + 1
+                    handle_update(token, u, config)
+            else:
+                time.sleep(2)
+        except Exception as e:
+            print(f"[!] Polling error: {e}", file=sys.stderr)
+            time.sleep(3)
+
+    print("[*] Telegram Bot Daemon stopped.")
+
+
+if __name__ == "__main__":
+    main()

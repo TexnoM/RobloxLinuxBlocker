@@ -28,21 +28,28 @@ echo -e "${CYAN}[1/5]${NC} Creating /etc/rlb configuration directory..."
 mkdir -p /etc/rlb
 
 # 2. Copy data files
-echo -e "${CYAN}[2/5]${NC} Copying Roblox IP and domain lists..."
+echo -e "${CYAN}[2/5]${NC} Copying Roblox IP, domain lists, and bot configuration template..."
 cp -f "${SCRIPT_DIR}/data/roblox_ips.txt" /etc/rlb/roblox_ips.txt
 cp -f "${SCRIPT_DIR}/data/roblox_domains.txt" /etc/rlb/roblox_domains.txt
 chmod 644 /etc/rlb/roblox_ips.txt /etc/rlb/roblox_domains.txt
 
-# 3. Install CLI tool
-echo -e "${CYAN}[3/5]${NC} Installing rlb executable to /usr/local/bin..."
-cp -f "${SCRIPT_DIR}/bin/rlb" /usr/local/bin/rlb
-chmod 755 /usr/local/bin/rlb
+if [[ ! -f "/etc/rlb/bot_config.json" ]]; then
+    cp -f "${SCRIPT_DIR}/data/bot_config.json" /etc/rlb/bot_config.json
+    chmod 600 /etc/rlb/bot_config.json
+fi
 
-# 4. Install systemd service
-echo -e "${CYAN}[4/5]${NC} Installing systemd service rlb.service..."
+# 3. Install CLI and Telegram bot tools
+echo -e "${CYAN}[3/5]${NC} Installing executables to /usr/local/bin..."
+cp -f "${SCRIPT_DIR}/bin/rlb" /usr/local/bin/rlb
+cp -f "${SCRIPT_DIR}/bin/rlb-telegram-bot" /usr/local/bin/rlb-telegram-bot
+chmod 755 /usr/local/bin/rlb /usr/local/bin/rlb-telegram-bot
+
+# 4. Install systemd services
+echo -e "${CYAN}[4/5]${NC} Installing systemd services (rlb.service and rlb-bot.service)..."
 mkdir -p /etc/systemd/system
 cp -f "${SCRIPT_DIR}/systemd/rlb.service" /etc/systemd/system/rlb.service
-chmod 644 /etc/systemd/system/rlb.service
+cp -f "${SCRIPT_DIR}/systemd/rlb-bot.service" /etc/systemd/system/rlb-bot.service
+chmod 644 /etc/systemd/system/rlb.service /etc/systemd/system/rlb-bot.service
 
 if command -v systemctl &>/dev/null; then
     systemctl daemon-reload
@@ -61,9 +68,10 @@ echo -e "${GREEN}${BOLD}✔ RobloxLinuxBlocker successfully installed!${NC}"
 echo -e "The ${BOLD}rlb${NC} command is now available system-wide."
 echo ""
 echo -e "${BOLD}Recommended next steps:${NC}"
-echo -e "  ${GREEN}sudo rlb auto${NC}    - Enable blocking and setup autostart on boot (RECOMMENDED)"
-echo -e "  ${YELLOW}sudo rlb status${NC}  - Inspect current blocking status"
-echo -e "  ${RED}sudo rlb off${NC}     - Turn off blocking and disable autostart"
-echo -e "  ${CYAN}sudo rlb update${NC}  - Pull latest Roblox IP subnets from official registries"
-echo -e "  ${BOLD}rlb help${NC}         - Show command help"
+echo -e "  ${GREEN}sudo rlb auto${NC}                    - Enable blocking and setup autostart on boot (RECOMMENDED)"
+echo -e "  ${YELLOW}sudo rlb status${NC}                  - Inspect current blocking and bot status"
+echo -e "  ${CYAN}sudo rlb add token <TOKEN>${NC}       - Configure Telegram Bot token"
+echo -e "  ${CYAN}sudo rlb add parent <TG_ID>${NC}      - Authorize parent Telegram user ID"
+echo -e "  ${CYAN}sudo rlb bot start${NC}               - Start the Telegram Bot parental control daemon"
+echo -e "  ${BOLD}rlb help${NC}                         - Show command help"
 echo ""

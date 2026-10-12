@@ -14,11 +14,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Validate Bash syntax
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Validate Bash & Python syntax
         run: |
           bash -n bin/rlb
           bash -n install.sh
           bash -n uninstall.sh
+          python3 -m py_compile bin/rlb-telegram-bot
 
       - name: Run ShellCheck
         run: |

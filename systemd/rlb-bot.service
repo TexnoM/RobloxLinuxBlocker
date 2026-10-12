@@ -1,0 +1,15 @@
+[Unit]
+Description=RobloxLinuxBlocker Telegram Bot Daemon
+Documentation=https://github.com/TexnoM/RobloxLinuxBlocker
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/rlb-telegram-bot
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

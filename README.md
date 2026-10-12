@@ -4,11 +4,14 @@
   <img src="https://img.shields.io/badge/License-AGPL%20v3-blue.svg" alt="License: AGPL v3">
   <img src="https://img.shields.io/badge/Platform-Linux-orange.svg" alt="Platform: Linux">
   <img src="https://img.shields.io/badge/Compatibility-Sober%20%7C%20Vinegar%20%7C%20Flatpak-success.svg" alt="Sober Compatible">
-  <img src="https://img.shields.io/badge/Language-Bash-4EAA25.svg" alt="Language: Bash">
+  <img src="https://img.shields.io/badge/Telegram%20Bot-Parental%20Control-2CA5E0.svg" alt="Telegram Bot">
+  <img src="https://img.shields.io/badge/Language-Bash%20%26%20Python-4EAA25.svg" alt="Language: Bash & Python">
   <img src="https://img.shields.io/badge/Status-Production%20Ready-brightgreen.svg" alt="Status">
 </p>
 
-**RobloxLinuxBlocker (RLB)** is an uncompromising, system-level tool that blocks **ABSOLUTELY ALL Roblox IP addresses and domains on Linux**. Designed from the ground up for 100% compatibility and airtight blocking against **Sober** (the Android runner for Linux), **Vinegar**, web browsers, and any background native game clients.
+**RobloxLinuxBlocker (RLB)** is an uncompromising, system-level parental control tool that blocks **ABSOLUTELY ALL Roblox IP addresses and domains on Linux**. Designed from the ground up for 100% airtight blocking against **Sober** (the Android runner for Linux), **Vinegar**, web browsers, and background native game clients.
+
+Includes an **integrated Telegram Bot** allowing parents to remotely block, unblock, or set gameplay timers directly from their smartphones!
 
 ---
 
@@ -19,7 +22,8 @@
   2. **Netfilter / iptables & ip6tables Rules:** A dedicated `RLB_BLOCK` chain attached to `OUTPUT` and `FORWARD` drops all traffic originating from host applications as well as containerized sandbox environments (such as Flatpak and Bubblewrap).
   3. **DNS Sinkholing via `/etc/hosts`:** Routes all Roblox login, API, asset delivery, and CDN domains to `0.0.0.0` and `::1`.
 - 🤖 **Guaranteed Sober / Flatpak Compatibility:** Because Flatpak and Sober share the host's network namespace (`--share=network`) and inherit the host `/etc/hosts`, gameplay through Sober is completely disabled (connection timeouts, authentication failure, and instant termination of active sessions).
-- 🚀 **Intuitive CLI Commands:** Single-word controls (`rlb auto`, `rlb off`, `rlb on`, `rlb status`, etc.).
+- 📱 **Telegram Bot Parental Controls:** Remotely block or unblock Roblox from anywhere using interactive Telegram buttons, or grant temporary access (e.g. 30 minutes or 1 hour) with automatic re-blocking when the timer expires!
+- 🚀 **Intuitive CLI Commands:** Single-word controls (`rlb auto`, `rlb off`, `rlb on`, `rlb status`, `rlb add parent`, etc.).
 - 🔄 **Persistent Autostart via systemd:** Starts automatically on system boot.
 - 🌐 **Dynamic Prefix Updates (`rlb update`):** Queries official RIPEstat (AS22697) and ARIN (RC-376) RDAP APIs to sync the latest Roblox subnets.
 - 📜 **Free & Open Source:** Licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
@@ -51,60 +55,66 @@ sudo make install
 
 The installer performs the following operations:
 - Creates the system configuration folder at `/etc/rlb/`.
-- Deploys the IP ranges (`roblox_ips.txt`) and domain lists (`roblox_domains.txt`).
-- Installs the executable binary `rlb` into `/usr/local/bin/rlb` (available system-wide).
-- Sets up the systemd service file at `/etc/systemd/system/rlb.service`.
+- Deploys the IP ranges (`roblox_ips.txt`), domain lists (`roblox_domains.txt`), and bot configuration.
+- Installs the CLI tools (`rlb` and `rlb-telegram-bot`) into `/usr/local/bin/`.
+- Configures systemd service units for both system autostart and the Telegram bot daemon.
 
 ---
 
-## 🎮 How to Use (Commands)
+## 📱 Telegram Bot Setup (Remote Parental Control)
 
-### 🔹 1. Enable Blocking & Autostart on Boot (Recommended):
-Blocks Roblox immediately and configures systemd so that blocking stays active even after computer reboots:
+Control Roblox blocking on the Linux machine directly from your phone via Telegram!
+
+### Step 1: Create a Telegram Bot
+1. Open Telegram and search for [@BotFather](https://t.me/BotFather).
+2. Send `/newbot`, enter a display name and username (e.g., `MyHouseParentBot`).
+3. Copy the HTTP API token provided by BotFather (e.g., `123456789:ABCdefGHIjkLMNopQRstUVwxyz`).
+
+### Step 2: Configure the Bot on Linux
+Run the following commands on the Linux PC:
 ```bash
-sudo rlb auto
+# 1. Save the Telegram bot token
+sudo rlb add token YOUR_BOT_TOKEN_HERE
+
+# 2. Authorize your Telegram user ID as a parent
+sudo rlb add parent YOUR_TELEGRAM_USER_ID
+
+# 3. Start the bot background service (enabled on boot)
+sudo rlb bot start
 ```
 
-### 🔹 2. Completely Disable Blocking:
-Reverts all firewall rules, deletes blackhole routes, cleans up `/etc/hosts`, and stops the systemd service:
-```bash
-sudo rlb off
-```
+> 💡 **Don't know your Telegram User ID?**  
+> Simply start the bot, message it `/start`, and the bot will reply with your Telegram ID and the exact command to authorize yourself!
 
-### 🔹 3. Enable Blocking for Current Session Only:
-Blocks Roblox immediately without enabling persistent systemd autostart:
-```bash
-sudo rlb on
-```
+### Step 3: Use the Bot in Telegram
+Once authorized, open your bot in Telegram and use the interactive menu:
+- 🔴 **Block Roblox:** Immediately cuts off all Roblox connections and terminates active Sober sessions.
+- 🟢 **Unblock Roblox:** Allows unrestricted gameplay.
+- ⏱️ **Allow for 30m / 1h:** Temporarily unblocks Roblox and begins a countdown. When time is up, the bot automatically re-blocks Roblox and sends you an alert!
+- 📊 **Status:** Returns live firewall, routing, and timer status.
 
-### 🔹 4. Disable Autostart Only:
-Disables the systemd autostart service while keeping the current session's block active:
-```bash
-sudo rlb noauto
-```
+---
 
-### 🔹 5. Inspect Live Status:
-Shows the active state of firewall rules, blackhole routes, DNS sinkholes, systemd service status, and running Sober processes:
-```bash
-rlb status
-```
+## 🎮 Command Reference (CLI)
 
-### 🔹 6. Test Blocking:
-Runs connectivity probes against Roblox domains, APIs, and game server IPs to confirm that traffic is blocked:
-```bash
-rlb test
-```
+### 🔹 System Controls:
+- **`sudo rlb auto`** — Enable blocking and configure persistent autostart via systemd (Recommended).
+- **`sudo rlb off`** — Completely disable Roblox blocking and autostart.
+- **`sudo rlb on`** — Enable blocking immediately (current session).
+- **`sudo rlb noauto`** — Disable systemd autostart (keeps current session blocked).
+- **`rlb status`** — Inspect live status of firewall rules, blackhole routes, hosts, and bot service.
+- **`rlb test`** — Probe Roblox domains and game server IPs to confirm blocking.
+- **`sudo rlb update`** — Pull latest Roblox IP subnets from official RIPEstat & ARIN registries.
 
-### 🔹 7. Update Roblox IP Subnets:
-Fetches announced BGP prefixes and ARIN allocations in real time and reapplies the rules:
-```bash
-sudo rlb update
-```
-
-### 🔹 8. View Help:
-```bash
-rlb help
-```
+### 🔹 Telegram Bot & Parent Management:
+- **`sudo rlb add token <TOKEN>`** — Set Telegram bot token.
+- **`sudo rlb add parent <TG_ID>`** — Authorize a parent Telegram ID.
+- **`sudo rlb remove parent <TG_ID>`** — Revoke a parent Telegram ID.
+- **`rlb list parents`** — List all authorized parent IDs.
+- **`sudo rlb bot start`** — Start and enable the Telegram bot service.
+- **`sudo rlb bot stop`** — Stop the Telegram bot service.
+- **`sudo rlb bot restart`** — Restart the Telegram bot service.
+- **`rlb bot status`** — Check if the Telegram bot daemon is active.
 
 ---
 
@@ -124,11 +134,10 @@ sudo make uninstall
 
 ### What uninstallation does:
 1. Automatically runs `rlb off` to remove all active firewall rules and kernel blackhole routes.
-2. Stops and disables the `rlb.service` systemd service.
-3. Removes `/etc/systemd/system/rlb.service` and reloads systemd daemon.
-4. Removes all Roblox sinkhole entries from `/etc/hosts`.
-5. Deletes `/usr/local/bin/rlb` and `/etc/rlb/`.
-6. Leaves your operating system in its original, clean state.
+2. Stops and removes the `rlb.service` and `rlb-bot.service` systemd daemons.
+3. Cleans up `/etc/hosts` and restores default networking.
+4. Deletes `/usr/local/bin/rlb`, `/usr/local/bin/rlb-telegram-bot`, and `/etc/rlb/`.
+5. Leaves your operating system in its original, clean state.
 
 ---
 
@@ -139,7 +148,7 @@ sudo make uninstall
 **RobloxLinuxBlocker stops Sober on three levels:**
 1. **Network Namespace:** Flatpak shares the host network interface. The `ip route blackhole` and `iptables` rules drop all outgoing UDP/TCP packets going to Roblox AS22697 game servers (UDP ports 1024–65535).
 2. **DNS & API Isolation:** Flatpak mounts the host `/etc/hosts` file. Sober cannot connect to `auth.roblox.com` or `apis.roblox.com` to log in, fetch updates, or download game assets.
-3. **Session Killer:** Running `sudo rlb on` or `sudo rlb auto` detects and immediately terminates any active Sober sessions.
+3. **Session Killer:** Running `sudo rlb on` or clicking "Block" in Telegram detects and immediately terminates any active Sober sessions.
 
 ---
 
@@ -151,12 +160,15 @@ RobloxLinuxBlocker/
 │   └── workflows/
 │       └── test.yml          # GitHub Actions CI for syntax validation
 ├── bin/
-│   └── rlb                   # Primary CLI management tool
+│   ├── rlb                   # Primary CLI management tool (Bash)
+│   └── rlb-telegram-bot      # Parental control daemon (Python 3)
 ├── data/
 │   ├── roblox_ips.txt        # Verified CIDR IP prefix list (AS22697 & RC-376)
-│   └── roblox_domains.txt    # Official domain and subdomain blocklist
+│   ├── roblox_domains.txt    # Official domain and subdomain blocklist
+│   └── bot_config.json       # Template configuration for Telegram bot
 ├── systemd/
-│   └── rlb.service           # systemd unit for persistent boot protection
+│   ├── rlb.service           # systemd unit for persistent boot protection
+│   └── rlb-bot.service       # systemd unit for Telegram bot daemon
 ├── .gitignore                # Git ignore rules
 ├── CONTRIBUTING.md           # Contribution guidelines
 ├── LICENSE                   # GNU Affero General Public License v3.0

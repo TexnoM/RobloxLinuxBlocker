@@ -19,8 +19,9 @@ NC='\033[0m' # No Color
 
 # --- Paths and Constants ---
 APP_NAME="RobloxLinuxBlocker"
-VERSION="1.0.0"
+VERSION="1.1.0"
 SYSTEMD_SERVICE="rlb.service"
+BOT_SERVICE="rlb-bot.service"
 
 HOSTS_MARKER_START="# --- ROBLOX-LINUX-BLOCKER-START ---"
 HOSTS_MARKER_END="# --- ROBLOX-LINUX-BLOCKER-END ---"
@@ -33,15 +34,19 @@ SCRIPT_DIR="$(dirname "$REAL_SCRIPT_PATH")"
 if [[ -f "/etc/rlb/roblox_ips.txt" ]]; then
     IP_FILE="/etc/rlb/roblox_ips.txt"
     DOMAIN_FILE="/etc/rlb/roblox_domains.txt"
+    CONFIG_FILE="/etc/rlb/bot_config.json"
 elif [[ -f "${SCRIPT_DIR}/../data/roblox_ips.txt" ]]; then
     IP_FILE="${SCRIPT_DIR}/../data/roblox_ips.txt"
     DOMAIN_FILE="${SCRIPT_DIR}/../data/roblox_domains.txt"
+    CONFIG_FILE="${SCRIPT_DIR}/../data/bot_config.json"
 elif [[ -f "${SCRIPT_DIR}/data/roblox_ips.txt" ]]; then
     IP_FILE="${SCRIPT_DIR}/data/roblox_ips.txt"
     DOMAIN_FILE="${SCRIPT_DIR}/data/roblox_domains.txt"
+    CONFIG_FILE="${SCRIPT_DIR}/data/bot_config.json"
 else
     IP_FILE="/etc/rlb/roblox_ips.txt"
     DOMAIN_FILE="/etc/rlb/roblox_domains.txt"
+    CONFIG_FILE="/etc/rlb/bot_config.json"
 fi
 
 # --- Helper Functions ---
@@ -371,6 +376,16 @@ do_status() {
         echo -e "${GREEN}Not running${NC}"
     fi
 
+    # 6. Check Telegram Bot
+    echo -n "Telegram Bot Service: "
+    if command -v systemctl &>/dev/null && systemctl is-active "$BOT_SERVICE" &>/dev/null; then
+        echo -e "${GREEN}RUNNING (systemd)${NC}"
+    elif pgrep -f "rlb-telegram-bot" &>/dev/null; then
+        echo -e "${GREEN}RUNNING (background process)${NC}"
+    else
+        echo -e "${YELLOW}STOPPED${NC}"
+    fi
+
     echo ""
 }
 
@@ -500,23 +515,192 @@ do_test() {
     echo ""
 }
 
+# --- Telegram Bot Management ---
+
+do_add_token() {
+    local token="$1"
+    if [[ -z "$token" ]]; then
+        log_error "Usage: rlb add token <BOT_TOKEN>"
+        exit 1
+    fi
+    mkdir -p "$(dirname "$CONFIG_FILE")"
+    python3 -c "
+import json, os
+cfg = '$CONFIG_FILE'
+data = {'bot_token': '', 'parents': []}
+if os.path.exists(cfg):
+    try:
+        with open(cfg, 'r') as f:
+            data = json.load(f)
+    except Exception:
+        pass
+data['bot_token'] = '$token'
+with open(cfg, 'w') as f:
+    json.dump(data, f, indent=2)
+os.chmod(cfg, 0o600)
+"
+    log_success "Telegram bot token saved successfully in $CONFIG_FILE"
+
+    if command -v systemctl &>/dev/null && systemctl is-active "$BOT_SERVICE" &>/dev/null; then
+        systemctl restart "$BOT_SERVICE"
+        log_info "Restarted $BOT_SERVICE to apply the new bot token."
+    fi
+}
+
+do_add_parent() {
+    local parent_id="$1"
+    if [[ -z "$parent_id" ]]; then
+        log_error "Usage: rlb add parent <TELEGRAM_USER_ID>"
+        exit 1
+    fi
+    if [[ ! "$parent_id" =~ ^[0-9]+$ ]]; then
+        log_error "Parent ID must be a numeric Telegram ID."
+        exit 1
+    fi
+    mkdir -p "$(dirname "$CONFIG_FILE")"
+    python3 -c "
+import json, os
+cfg = '$CONFIG_FILE'
+data = {'bot_token': '', 'parents': []}
+if os.path.exists(cfg):
+    try:
+        with open(cfg, 'r') as f:
+            data = json.load(f)
+    except Exception:
+        pass
+parents = set(data.get('parents', []))
+parents.add(int('$parent_id'))
+data['parents'] = sorted(list(parents))
+with open(cfg, 'w') as f:
+    json.dump(data, f, indent=2)
+os.chmod(cfg, 0o600)
+"
+    log_success "Added parent Telegram ID: $parent_id"
+}
+
+do_remove_parent() {
+    local parent_id="$1"
+    if [[ -z "$parent_id" ]]; then
+        log_error "Usage: rlb remove parent <TELEGRAM_USER_ID>"
+        exit 1
+    fi
+    mkdir -p "$(dirname "$CONFIG_FILE")"
+    python3 -c "
+import json, os
+cfg = '$CONFIG_FILE'
+if not os.path.exists(cfg):
+    exit(0)
+try:
+    with open(cfg, 'r') as f:
+        data = json.load(f)
+except Exception:
+    exit(0)
+parents = [p for p in data.get('parents', []) if str(p) != '$parent_id']
+data['parents'] = parents
+with open(cfg, 'w') as f:
+    json.dump(data, f, indent=2)
+os.chmod(cfg, 0o600)
+"
+    log_success "Removed parent Telegram ID: $parent_id"
+}
+
+do_list_parents() {
+    python3 -c "
+import json, os
+cfg = '$CONFIG_FILE'
+if not os.path.exists(cfg):
+    print('No parents registered yet.')
+    exit(0)
+try:
+    with open(cfg, 'r') as f:
+        data = json.load(f)
+    parents = data.get('parents', [])
+    if parents:
+        print('Registered parent Telegram IDs:')
+        for p in parents:
+            print(f'  • {p}')
+    else:
+        print('No parents registered yet.')
+except Exception as e:
+    print(f'Error reading config: {e}')
+"
+}
+
+do_bot() {
+    local action="${1:-status}"
+    case "$action" in
+        start)
+            if command -v systemctl &>/dev/null; then
+                systemctl daemon-reload 2>/dev/null || true
+                systemctl enable --now "$BOT_SERVICE"
+                log_success "$BOT_SERVICE started and enabled."
+            else
+                log_info "Starting rlb-telegram-bot in background..."
+                nohup /usr/local/bin/rlb-telegram-bot >/tmp/rlb-bot.log 2>&1 &
+                log_success "rlb-telegram-bot started in background."
+            fi
+            ;;
+        stop)
+            if command -v systemctl &>/dev/null; then
+                systemctl stop "$BOT_SERVICE" 2>/dev/null || true
+                systemctl disable "$BOT_SERVICE" 2>/dev/null || true
+            fi
+            pkill -f "rlb-telegram-bot" 2>/dev/null || true
+            log_success "Telegram bot service stopped."
+            ;;
+        restart)
+            if command -v systemctl &>/dev/null; then
+                systemctl restart "$BOT_SERVICE"
+                log_success "$BOT_SERVICE restarted."
+            else
+                pkill -f "rlb-telegram-bot" 2>/dev/null || true
+                nohup /usr/local/bin/rlb-telegram-bot >/tmp/rlb-bot.log 2>&1 &
+                log_success "rlb-telegram-bot restarted in background."
+            fi
+            ;;
+        status)
+            if command -v systemctl &>/dev/null; then
+                systemctl status "$BOT_SERVICE" --no-pager || true
+            else
+                if pgrep -f "rlb-telegram-bot" &>/dev/null; then
+                    log_success "rlb-telegram-bot is running."
+                else
+                    log_warn "rlb-telegram-bot is not running."
+                fi
+            fi
+            ;;
+        *)
+            log_error "Unknown bot command: $action (valid: start, stop, restart, status)"
+            exit 1
+            ;;
+    esac
+}
+
 show_help() {
     echo -e "${BOLD}${CYAN}${APP_NAME} v${VERSION}${NC}"
     echo -e "Universal Roblox IP and domain blocker for Linux (including Sober & Flatpak).\n"
-    echo -e "${BOLD}Usage:${NC}"
-    echo -e "  rlb ${GREEN}auto${NC}       - Enable blocking and configure autostart via systemd"
-    echo -e "  rlb ${RED}off${NC}        - Completely disable Roblox blocking and autostart"
-    echo -e "  rlb ${GREEN}on${NC}         - Enable blocking immediately (current session)"
-    echo -e "  rlb ${YELLOW}noauto${NC}     - Disable systemd autostart (keep current block active)"
-    echo -e "  rlb ${BLUE}status${NC}     - Show status of firewall rules, routes, hosts, and service"
-    echo -e "  rlb ${CYAN}update${NC}     - Fetch latest Roblox IP prefixes from public registries"
-    echo -e "  rlb ${BOLD}test${NC}       - Verify that Roblox and Sober traffic is blocked"
-    echo -e "  rlb ${YELLOW}help${NC}       - Display this help message"
+    echo -e "${BOLD}System Controls:${NC}"
+    echo -e "  rlb ${GREEN}auto${NC}                     - Enable blocking and configure autostart via systemd"
+    echo -e "  rlb ${RED}off${NC}                      - Completely disable Roblox blocking and autostart"
+    echo -e "  rlb ${GREEN}on${NC}                       - Enable blocking immediately (current session)"
+    echo -e "  rlb ${YELLOW}noauto${NC}                   - Disable systemd autostart (keep current block active)"
+    echo -e "  rlb ${BLUE}status${NC}                   - Show status of firewall rules, routes, hosts, and bot"
+    echo -e "  rlb ${CYAN}update${NC}                   - Fetch latest Roblox IP prefixes from public registries"
+    echo -e "  rlb ${BOLD}test${NC}                     - Verify that Roblox and Sober traffic is blocked"
+    echo ""
+    echo -e "${BOLD}Telegram Bot & Parental Controls:${NC}"
+    echo -e "  rlb ${GREEN}add token${NC} <TOKEN>        - Save Telegram bot token"
+    echo -e "  rlb ${GREEN}add parent${NC} <TG_ID>       - Authorize parent Telegram user ID"
+    echo -e "  rlb ${RED}remove parent${NC} <TG_ID>    - Revoke parent authorization"
+    echo -e "  rlb ${BLUE}list parents${NC}             - View authorized parent Telegram IDs"
+    echo -e "  rlb ${CYAN}bot start|stop|status${NC}    - Control Telegram bot background service"
+    echo -e "  rlb ${YELLOW}help${NC}                     - Display this help message"
     echo ""
     echo -e "${BOLD}Examples:${NC}"
-    echo -e "  sudo rlb auto     # Block Roblox and make it persistent across reboots"
-    echo -e "  sudo rlb off      # Remove all blocks"
-    echo -e "  sudo rlb status   # Inspect current blocking status"
+    echo -e "  sudo rlb add token 123456789:ABCdefGHIjkLMNopQRstUVwxyz"
+    echo -e "  sudo rlb add parent 987654321"
+    echo -e "  sudo rlb bot start"
+    echo -e "  sudo rlb auto"
     echo ""
 }
 
@@ -550,6 +734,51 @@ case "$COMMAND" in
         ;;
     test)
         do_test
+        ;;
+    add)
+        check_root "$@"
+        SUBCMD="${2:-}"
+        case "$SUBCMD" in
+            parent)
+                do_add_parent "${3:-}"
+                ;;
+            token)
+                do_add_token "${3:-}"
+                ;;
+            *)
+                log_error "Unknown add command: $SUBCMD (valid: rlb add parent <ID> | rlb add token <TOKEN>)"
+                exit 1
+                ;;
+        esac
+        ;;
+    remove)
+        check_root "$@"
+        SUBCMD="${2:-}"
+        case "$SUBCMD" in
+            parent)
+                do_remove_parent "${3:-}"
+                ;;
+            *)
+                log_error "Unknown remove command: $SUBCMD (valid: rlb remove parent <ID>)"
+                exit 1
+                ;;
+        esac
+        ;;
+    list)
+        SUBCMD="${2:-}"
+        case "$SUBCMD" in
+            parents|parent)
+                do_list_parents
+                ;;
+            *)
+                log_error "Unknown list command: $SUBCMD (valid: rlb list parents)"
+                exit 1
+                ;;
+        esac
+        ;;
+    bot)
+        check_root "$@"
+        do_bot "${2:-status}"
         ;;
     help|--help|-h|"")
         show_help
