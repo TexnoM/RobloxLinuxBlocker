@@ -1,0 +1,197 @@
+# RobloxLinuxBlocker (RLB) 🚫🎮
+
+<p align="center">
+  <img src="https://img.shields.io/badge/License-AGPL%20v3-blue.svg" alt="License: AGPL v3">
+  <img src="https://img.shields.io/badge/Platform-Linux-orange.svg" alt="Platform: Linux">
+  <img src="https://img.shields.io/badge/Compatibility-Sober%20%7C%20Vinegar%20%7C%20Flatpak-success.svg" alt="Sober Compatible">
+  <img src="https://img.shields.io/badge/Telegram%20Bot-Parental%20Control-2CA5E0.svg" alt="Telegram Bot">
+  <img src="https://img.shields.io/badge/Language-Bash%20%26%20Python-4EAA25.svg" alt="Language: Bash & Python">
+  <img src="https://img.shields.io/badge/Status-Production%20Ready-brightgreen.svg" alt="Status">
+</p>
+
+<p align="center">
+  🌐 <b>Language / Мова / Язык:</b>
+  <a href="README.md"><b>English</b></a> •
+  <a href="README.uk.md"><b>Українська</b></a> •
+  <a href="README.ru.md"><b>Русский</b></a>
+</p>
+
+**RobloxLinuxBlocker (RLB)** — це безкомпромісний інструмент батьківського контролю на рівні ядра системи, який блокує **АБСОЛЮТНО ВСІ IP-адреси та домени Roblox на Linux**. Створений з нуля для 100% непробивного блокування клієнта **Sober** (Android-раннер для Linux), **Vinegar**, браузерів та будь-яких нативних процесів.
+
+Включає **вбудованого Telegram-бота**, що дозволяє батькам дистанційно блокувати, розблоковувати Roblox або встановлювати таймер гри прямо зі свого смартфона!
+
+---
+
+## ⚡ Особливості (Features)
+
+- 🔒 **Трирівневий захист ядра Linux:**
+  1. **Ядерні маршрути `blackhole` (FIB routing):** Пакети до підмереж CIDR Roblox відкидаються ядром ще до виходу в мережевий інтерфейс з нульовим навантаженням на процесор.
+  2. **Мережевий фільтр `iptables` та `ip6tables`:** Спеціальний ланцюжок `RLB_BLOCK` у ланцюжках `OUTPUT` та `FORWARD` відкидає будь-який трафік з хоста та з ізольованих середовищ контейнерів (Flatpak, Bubblewrap).
+  3. **DNS-блокування в `/etc/hosts`:** Спрямовує всі сервісні домени, API, авторизацію та CDN Roblox на `0.0.0.0` та `::1`.
+- 🤖 **Гарантована сумісність із Sober / Flatpak:** Оскільки Flatpak та Sober використовують мережевий стек хоста (`--share=network`) та системний `/etc/hosts`, гра через Sober повністю унеможливлюється (помилки підключення, неможливість авторизації та миттєве закриття активних сесій).
+- 📱 **Батьківський контроль через Telegram:** Блокуйте або розблоковуйте Roblox дистанційно за допомогою інтерактивних кнопок у боті, або давайте тимчасовий доступ (наприклад, на 30 хвилин або 1 годину) з автоматичним блокуванням по таймеру!
+- 🚀 **Простий інтерфейс командного рядка (CLI):** Зручні однослівні команди (`rlb auto`, `rlb off`, `rlb on`, `rlb status`, `rlb add parent` тощо).
+- 🔄 **Автостарт через systemd:** Блокування автоматично піднімається при кожному завантаженні комп'ютера.
+- 🌐 **Динамічне оновлення (`rlb update`):** Запит до офіційних баз RIPEstat (AS22697) та ARIN (RC-376) для отримання найновіших підмереж.
+- 📜 **Вільна ліцензія:** GNU Affero General Public License v3.0 (AGPL-3.0).
+
+---
+
+## 📥 Встановлення (Installation)
+
+### Спосіб 1: Через Git (Рекомендовано)
+
+1. Клонуйте репозиторій:
+   ```bash
+   git clone https://github.com/TexnoM/RobloxLinuxBlocker.git
+   cd RobloxLinuxBlocker
+   ```
+
+2. Запустіть скрипт встановлення:
+   ```bash
+   sudo ./install.sh
+   ```
+
+### Спосіб 2: Через Make
+
+```bash
+git clone https://github.com/TexnoM/RobloxLinuxBlocker.git
+cd RobloxLinuxBlocker
+sudo make install
+```
+
+Інсталятор виконує такі дії:
+- Створює системну директорію конфігурації `/etc/rlb/`.
+- Розгортає списки IP-адрес (`roblox_ips.txt`), доменів (`roblox_domains.txt`) та конфіг бота.
+- Встановлює програми (`rlb` та `rlb-telegram-bot`) у `/usr/local/bin/` (доступні глобально).
+- Налаштовує служби systemd для системного блокування та Telegram-бота.
+
+---
+
+## 📱 Налаштування Telegram-бота (Дистанційний батьківський контроль)
+
+Керуйте блокуванням Roblox на комп'ютері прямо зі свого смартфона через Telegram!
+
+### Крок 1: Створіть бота в Telegram
+1. Відкрийте Telegram та знайдіть офіційного бота [@BotFather](https://t.me/BotFather).
+2. Надішліть команду `/newbot`, введіть ім'я та юзернейм для бота (наприклад, `MyHomeParentBot`).
+3. Скопіюйте отриманий токен (вигляду `123456789:ABCdefGHIjkLMNopQRstUVwxyz`).
+
+### Крок 2: Налаштуйте бота на комп'ютері
+Виконайте такі команди в терміналі Linux:
+```bash
+# 1. Збережіть токен Telegram-бота
+sudo rlb add token ВАШ_ТОКЕН_БОТА
+
+# 2. Авторизуйте ваш Telegram User ID як батька
+sudo rlb add parent ВАШ_ТЕЛЕГРАМ_ID
+
+# 3. Запустіть фонову службу бота (вона працюватиме завжди)
+sudo rlb bot start
+```
+
+> 💡 **Не знаєте свій Telegram ID?**  
+> Просто відкрийте щойно створеного бота в Telegram, натисніть `/start`, і бот сам надішле вам ваш ID та готову команду для авторизації!
+
+### Крок 3: Використання бота в Telegram
+Після авторизації відкрийте бота в Telegram і натисніть `/start` — з'явиться інтерактивне меню з кнопками:
+- 🔴 **Block Roblox:** Миттєво відключає всі з'єднання Roblox та примусово закриває активні сесії Sober.
+- 🟢 **Unblock Roblox:** Повністю відкриває доступ без обмежень.
+- ⏱️ **Allow for 30m / 1h:** Тимчасово відкриває доступ до Roblox та запускає таймер. Коли час закінчиться, бот автоматично заблокує Roblox і сповістить вас!
+- 📊 **Status:** Повертає поточний статус мережевих правил, таймера та запущених процесів.
+
+---
+
+## 🎮 Довідник команд (CLI)
+
+### 🔹 Системне керування:
+- **`sudo rlb auto`** — Увімкнути блокування та додати в автостарт через systemd (Рекомендовано).
+- **`sudo rlb off`** — Повністю вимкнути блокування Roblox та вимкнути автостарт.
+- **`sudo rlb on`** — Увімкнути блокування негайно (тільки для поточного сеансу).
+- **`sudo rlb noauto`** — Вимкнути автостарт systemd (залишивши блокування активним).
+- **`rlb status`** — Показати поточний стан правил брандмауера, ядерних маршрутів, hosts та бота.
+- **`rlb test`** — Перевірити доступність серверів Roblox на практиці.
+- **`sudo rlb update`** — Оновити підмережі Roblox з офіційних реєстрів RIPEstat та ARIN.
+
+### 🔹 Керування ботом та батьками:
+- **`sudo rlb add token <TOKEN>`** — Зберегти токен Telegram-бота.
+- **`sudo rlb add parent <TG_ID>`** — Додати Telegram ID до списку батьків.
+- **`sudo rlb remove parent <TG_ID>`** — Видалити Telegram ID зі списку батьків.
+- **`rlb list parents`** — Переглянути список авторизованих батьків.
+- **`sudo rlb bot start`** — Запустити та додати в автостарт службу Telegram-бота.
+- **`sudo rlb bot stop`** — Зупинити службу Telegram-бота.
+- **`sudo rlb bot restart`** — Перезапустити службу Telegram-бота.
+- **`rlb bot status`** — Перевірити, чи працює демон Telegram-бота.
+
+---
+
+## 🗑️ Видалення (Uninstallation)
+
+Якщо ви бажаєте повністю видалити RobloxLinuxBlocker із системи:
+
+### Спосіб 1: Через скрипт деінсталяції
+```bash
+sudo ./uninstall.sh
+```
+
+### Спосіб 2: Через Make
+```bash
+sudo make uninstall
+```
+
+### Що робить видалення:
+1. Автоматично викликає `rlb off` для очищення правил брандмауера та маршрутів blackhole.
+2. Зупиняє, вимикає та видаляє службы `rlb.service` та `rlb-bot.service`.
+3. Очищає системний файл `/etc/hosts`.
+4. Видаляє файли `/usr/local/bin/rlb`, `/usr/local/bin/rlb-telegram-bot` та каталог `/etc/rlb/`.
+5. Повертає вашу операційну систему до початкового чистого стану.
+
+---
+
+## 🛡️ Чому це працює проти Sober?
+
+[Sober](https://sober.vinegarhq.org/) — це неофіційний клієнт Roblox для Linux, який запускає мобільну версію всередині контейнера Flatpak. Звичайні блокувальники сайтів чи батьківський контроль у браузері безсилі проти Sober, оскільки він оминає настільні браузери.
+
+**RobloxLinuxBlocker зупиняє Sober на трьох рівнях:**
+1. **Спільна мережа:** Flatpak ділить мережевий інтерфейс хоста. Правила `ip route blackhole` та `iptables` відкидають усі вихідні UDP/TCP пакети, що йдуть до ігрових серверів Roblox AS22697 (порти UDP 1024–65535).
+2. **Ізоляція DNS та API:** Flatpak монтує системний файл `/etc/hosts`. Sober не може зв'язатися з `auth.roblox.com` чи `apis.roblox.com` для авторизації чи завантаження оновлень.
+3. **Завершення сесій:** Команда `sudo rlb on` або кнопка "Block" у Telegram миттєво знаходить і завершує будь-які відкриті сесії Sober.
+
+---
+
+## 🗂️ Структура проєкту
+
+```text
+RobloxLinuxBlocker/
+├── .github/
+│   └── workflows/
+│       └── test.yml          # GitHub Actions CI для перевірки синтаксису
+├── bin/
+│   ├── rlb                   # Головна консольна утиліта (Bash)
+│   └── rlb-telegram-bot      # Демон батьківського контролю (Python 3)
+├── data/
+│   ├── roblox_ips.txt        # Перевірений список IP-підмереж (AS22697 & RC-376)
+│   ├── roblox_domains.txt    # Офіційний перелік доменів для блокування
+│   └── bot_config.json       # Шаблон конфігурації Telegram-бота
+├── systemd/
+│   ├── rlb.service           # Служба автостарту мережевого блокування
+│   └── rlb-bot.service       # Служба фонового Telegram-бота
+├── .gitignore                # Файл виключень Git
+├── CONTRIBUTING.md           # Правила для контриб'юторів
+├── LICENSE                   # Текст ліцензії GNU AGPL-3.0
+├── Makefile                  # Цільові команди збірки та тестів
+├── README.md                 # Документація англійською
+├── README.uk.md              # Документація українською
+├── README.ru.md              # Документація російською
+├── SECURITY.md               # Політика безпеки
+├── install.sh                # Автоматичний інсталятор у систему
+└── uninstall.sh              # Скрипт повного видалення
+```
+
+---
+
+## 📄 Ліцензія (License)
+
+Ця програма є вільним програмним забезпеченням: ви можете розповсюджувати та/або змінювати її на умовах **GNU Affero General Public License (AGPL-3.0)**.
+
+Повний текст дивіться у файлі [LICENSE](LICENSE).

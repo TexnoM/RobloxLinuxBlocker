@@ -9,6 +9,13 @@
   <img src="https://img.shields.io/badge/Status-Production%20Ready-brightgreen.svg" alt="Status">
 </p>
 
+<p align="center">
+  🌐 <b>Language / Мова / Язык:</b>
+  <a href="README.md"><b>English</b></a> •
+  <a href="README.uk.md"><b>Українська</b></a> •
+  <a href="README.ru.md"><b>Русский</b></a>
+</p>
+
 **RobloxLinuxBlocker (RLB)** is an uncompromising, system-level parental control tool that blocks **ABSOLUTELY ALL Roblox IP addresses and domains on Linux**. Designed from the ground up for 100% airtight blocking against **Sober** (the Android runner for Linux), **Vinegar**, web browsers, and background native game clients.
 
 Includes an **integrated Telegram Bot** allowing parents to remotely block, unblock, or set gameplay timers directly from their smartphones!
