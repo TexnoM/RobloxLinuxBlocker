@@ -9,6 +9,8 @@ License: GNU Affero General Public License v3.0 (AGPL-3.0)
 
 import sys
 import os
+import re
+import html
 import json
 import time
 import signal
@@ -329,6 +331,14 @@ def get_main_keyboard(lang):
     }
 
 
+def clean_terminal_output(text):
+    if not text:
+        return ""
+    clean = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', text)
+    clean = clean.replace('\r', '').strip()
+    return html.escape(clean)
+
+
 def run_rlb_cmd(cmd_arg, bypass_pin=True):
     try:
         cmd = [RLB_BIN, cmd_arg] if os.path.exists(RLB_BIN) else ["rlb", cmd_arg]
@@ -479,7 +489,7 @@ def handle_update(token, update, config):
         if success:
             msg = t(lang, "blocked_ok")
         else:
-            msg = t(lang, "blocked_err", err=out[:300])
+            msg = t(lang, "blocked_err", err=clean_terminal_output(out[:400]))
         send_message(token, chat_id, msg, get_main_keyboard(lang))
 
     elif text in [t(lang, "btn_unblock"), "🟢 Unblock Roblox", "🟢 Розблокувати Roblox", "/unblock"]:
@@ -488,7 +498,7 @@ def handle_update(token, update, config):
         if success:
             msg = t(lang, "unblocked_ok")
         else:
-            msg = t(lang, "unblocked_err", err=out[:300])
+            msg = t(lang, "unblocked_err", err=clean_terminal_output(out[:400]))
         send_message(token, chat_id, msg, get_main_keyboard(lang))
 
     elif text in [t(lang, "btn_allow_30"), "⏱️ Allow for 30m", "⏱️ Дозволити на 30хв", "/allow30"]:
@@ -498,7 +508,7 @@ def handle_update(token, update, config):
             schedule_auto_block(token, chat_id, 30, lang)
             msg = t(lang, "timer_30_ok")
         else:
-            msg = t(lang, "unblocked_err", err=out[:300])
+            msg = t(lang, "unblocked_err", err=clean_terminal_output(out[:400]))
         send_message(token, chat_id, msg, get_main_keyboard(lang))
 
     elif text in [t(lang, "btn_allow_60"), "⏱️ Allow for 1h", "⏱️ Дозволити на 1год", "/allow60"]:
@@ -508,7 +518,7 @@ def handle_update(token, update, config):
             schedule_auto_block(token, chat_id, 60, lang)
             msg = t(lang, "timer_60_ok")
         else:
-            msg = t(lang, "unblocked_err", err=out[:300])
+            msg = t(lang, "unblocked_err", err=clean_terminal_output(out[:400]))
         send_message(token, chat_id, msg, get_main_keyboard(lang))
 
     elif text in [t(lang, "btn_settings"), "⚙️ Settings", "⚙️ Налаштування", "/settings"]:
@@ -537,7 +547,7 @@ def handle_update(token, update, config):
             f"{t(lang, 'report_last', last=stats.get('last_attempt', 'None'))}\n"
             f"{t(lang, 'report_pin', pin=pin_status)}\n"
             f"{t(lang, 'report_timer', timer=timer_info)}\n\n"
-            f"{t(lang, 'report_diag', diag=out.strip())}"
+            f"{t(lang, 'report_diag', diag=clean_terminal_output(out))}"
         )
         send_message(token, chat_id, msg, get_main_keyboard(lang))
 

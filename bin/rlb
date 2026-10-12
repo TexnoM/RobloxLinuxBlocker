@@ -6,8 +6,6 @@
 # License: GNU Affero General Public License v3.0 (AGPL-3.0)
 # ==============================================================================
 
-set -e
-
 # --- Colors and Formatting ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -195,7 +193,7 @@ block_routes() {
                 ip route add blackhole "$subnet" 2>/dev/null || true
             fi
         fi
-        ((count++))
+        count=$((count + 1))
     done < <(get_subnets)
     log_success "Blackhole routing configured for $count subnets."
 }
@@ -210,7 +208,7 @@ unblock_routes() {
         else
             ip route del blackhole "$subnet" 2>/dev/null || true
         fi
-        ((count++))
+        count=$((count + 1))
     done < <(get_subnets)
     log_success "Blackhole routes cleared."
 }
