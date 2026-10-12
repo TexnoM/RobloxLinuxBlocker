@@ -29,6 +29,7 @@ Includes an **integrated Telegram Bot** allowing parents to remotely block, unbl
   3. **DNS Sinkholing via `/etc/hosts`:** Routes all Roblox login, API, asset delivery, and CDN domains to `0.0.0.0` and `::1`.
 - 🤖 **Guaranteed Sober / Flatpak Compatibility:** Because Flatpak and Sober share the host's network namespace (`--share=network`) and inherit the host `/etc/hosts`, gameplay through Sober is completely disabled (connection timeouts, authentication failure, and dropped game packets) purely at the network layer without killing browser or desktop processes.
 - 📱 **Telegram Bot Parental Controls:** Remotely block or unblock Roblox from anywhere using interactive Telegram buttons, or grant temporary access (e.g. 30 minutes or 1 hour) with automatic re-blocking when the timer expires!
+- 🌐 **Multilingual Telegram Bot:** Prompts for your preferred language on first start (🇺🇦 Ukrainian or 🇬🇧 English) with a dedicated Settings menu to change languages anytime.
 - 🚨 **Real-Time Attempt Detection Alerts:** The Telegram bot automatically monitors dropped packets and notifies parents whenever Roblox connection attempts are made on the PC.
 - 🛡️ **Parental PIN & Tamper-Proof Locking:** Protect console unblocking with a secret Parent PIN (`rlb pin set`), plus filesystem-level immutable locking (`chattr +i`) on `/etc/hosts`.
 - 🌐 **Anti-Circumvention (DoH & DoT Mitigation):** Sinks canary domain `use-application-dns.net` and blocks port 853 to force browsers to respect system blocklists instead of Secure DNS.
@@ -107,10 +108,12 @@ sudo rlb bot start
 
 ### Step 3: Use the Bot in Telegram
 Once authorized, open your bot in Telegram and use the interactive menu:
+- 🌐 **Language Selection:** Upon sending `/start`, choose between 🇺🇦 Ukrainian and 🇬🇧 English.
 - 🔴 **Block Roblox:** Immediately cuts off all Roblox network traffic at the kernel level.
 - 🟢 **Unblock Roblox:** Allows unrestricted gameplay.
 - ⏱️ **Allow for 30m / 1h:** Temporarily unblocks Roblox and begins a countdown. When time is up, the bot automatically re-blocks Roblox and sends you an alert!
-- 📊 **Status:** Returns live firewall, routing, and timer status.
+- 📊 **Stats & Report:** Displays dropped packet statistics, detected attempts, and system diagnostics.
+- ⚙️ **Settings:** Change bot interface language at any time.
 
 ---
 

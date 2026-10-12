@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 RobloxLinuxBlocker - Telegram Bot Daemon
-Parental control integration with remote alerts, timers, and statistics.
+Parental control integration with multi-language support (UK/EN),
+remote alerts, timers, and statistics.
 
 License: GNU Affero General Public License v3.0 (AGPL-3.0)
 """
@@ -50,6 +51,128 @@ last_alert_time = 0
 last_packet_count = 0
 
 
+# --- Translations Dictionary ---
+
+STRINGS = {
+    "en": {
+        "btn_block": "🔴 Block Roblox",
+        "btn_unblock": "🟢 Unblock Roblox",
+        "btn_allow_30": "⏱️ Allow for 30m",
+        "btn_allow_60": "⏱️ Allow for 1h",
+        "btn_stats": "📊 Stats & Report",
+        "btn_settings": "⚙️ Settings",
+        "btn_help": "❓ Help",
+        "btn_back": "⬅️ Back",
+        "btn_lang": "🌐 Change Language",
+
+        "lang_selected": "✅ Language set to <b>English</b>.",
+        "welcome": (
+            "👋 <b>RobloxLinuxBlocker Parental Control</b>\n\n"
+            "You have remote administrative control over this machine.\n\n"
+            "<b>Available actions:</b>\n"
+            "• 🔴 <b>Block Roblox:</b> Immediately block all Roblox traffic.\n"
+            "• 🟢 <b>Unblock Roblox:</b> Allow gameplay with no time restriction.\n"
+            "• ⏱️ <b>Allow for 30m / 1h:</b> Temporary access; auto-blocks on expiry.\n"
+            "• 📊 <b>Stats & Report:</b> View blocked connection attempts and status.\n"
+            "• ⚙️ <b>Settings:</b> Manage language and preferences.\n"
+            "• 🚨 <b>Intrusion Alerts:</b> You will receive automated alerts when access is attempted."
+        ),
+        "blocked_ok": "🚫 <b>Roblox is now BLOCKED!</b>\nAll network traffic to Roblox servers has been blocked at the kernel level.",
+        "blocked_err": "❌ <b>Failed to block Roblox:</b>\n<code>{err}</code>",
+        "unblocked_ok": "✅ <b>Roblox has been UNBLOCKED.</b>\nGameplay is now allowed.",
+        "unblocked_err": "❌ <b>Failed to unblock Roblox:</b>\n<code>{err}</code>",
+        "timer_30_ok": "⏳ <b>Roblox is UNBLOCKED for 30 minutes!</b>\nA countdown timer has started. Roblox will be automatically blocked in 30 minutes.",
+        "timer_60_ok": "⏳ <b>Roblox is UNBLOCKED for 1 hour!</b>\nA countdown timer has started. Roblox will be automatically blocked in 60 minutes.",
+        "time_up": "⏰ <b>Time's up!</b>\nRoblox has been automatically <b>BLOCKED</b>.",
+        "settings_menu": "⚙️ <b>Settings</b>\n\nCurrent language: 🇬🇧 <b>English</b>\nChoose an action below:",
+        "choose_lang": "🌐 <b>Please select your language / Оберіть мову:</b>",
+        "unknown_cmd": "Unknown command. Please use the menu buttons below.",
+        "alert_attempt": (
+            "🚨 <b>Roblox Connection Attempt Blocked!</b>\n\n"
+            "A device on this Linux PC just attempted to connect to Roblox servers.\n"
+            "• <b>Packets dropped:</b> {diff}\n"
+            "• <b>Timestamp:</b> <code>{ts}</code>\n"
+            "• <b>Current state:</b> 🔴 BLOCKED"
+        ),
+        "report_title": "📊 <b>Parental Control Report</b>\n━━━━━━━━━━━━━━━━━━━━",
+        "report_packets": "🛡️ <b>Total Blocked Connection Packets:</b> {count}",
+        "report_last": "🕒 <b>Last Blocked Attempt:</b> {last}",
+        "report_pin": "🔐 <b>Console PIN Protection:</b> {pin}",
+        "report_timer": "⏱️ <b>Temporary Access Timer:</b> {timer}",
+        "report_diag": "<b>System Diagnostic:</b>\n<code>{diag}</code>",
+        "pin_active": "🔒 Active (Tamper-proof)",
+        "pin_disabled": "⚠️ Disabled",
+        "timer_active": "Active ({rem} minutes remaining)",
+        "timer_none": "None",
+        "denied": (
+            "⛔ <b>Access Denied</b>\n\n"
+            "You are not registered as a parent on this system.\n"
+            "Your Telegram ID: <code>{user_id}</code>\n\n"
+            "To authorize this account, run on the Linux machine:\n"
+            "<code>sudo rlb add parent {user_id}</code>"
+        )
+    },
+    "uk": {
+        "btn_block": "🔴 Заблокувати Roblox",
+        "btn_unblock": "🟢 Розблокувати Roblox",
+        "btn_allow_30": "⏱️ Дозволити на 30хв",
+        "btn_allow_60": "⏱️ Дозволити на 1год",
+        "btn_stats": "📊 Статистика та звіт",
+        "btn_settings": "⚙️ Налаштування",
+        "btn_help": "❓ Довідка",
+        "btn_back": "⬅️ Назад",
+        "btn_lang": "🌐 Змінити мову",
+
+        "lang_selected": "✅ Мову встановлено: <b>Українська</b>.",
+        "welcome": (
+            "👋 <b>Батьківський контроль RobloxLinuxBlocker</b>\n\n"
+            "Ви маєте дистанційний доступ для керування цим комп'ютером.\n\n"
+            "<b>Доступні дії:</b>\n"
+            "• 🔴 <b>Заблокувати Roblox:</b> Миттєво заблокувати весь трафік гри.\n"
+            "• 🟢 <b>Розблокувати Roblox:</b> Дозволити гру без обмеження часу.\n"
+            "• ⏱️ <b>Дозволити на 30хв / 1год:</b> Тимчасовий доступ з автоматичним блокуванням.\n"
+            "• 📊 <b>Статистика та звіт:</b> Переглянути стан блокування та історію спроб.\n"
+            "• ⚙️ <b>Налаштування:</b> Зміна мови та параметрів.\n"
+            "• 🚨 <b>Сповіщення:</b> Ви автоматично отримуватимете тривогу при спробі запуску гри."
+        ),
+        "blocked_ok": "🚫 <b>Roblox ЗАБЛОКОВАНО!</b>\nУвесь мережевий трафік до серверів Roblox відкинуто на рівні ядра Linux.",
+        "blocked_err": "❌ <b>Помилка блокування Roblox:</b>\n<code>{err}</code>",
+        "unblocked_ok": "✅ <b>Roblox РОЗБЛОКОВАНО.</b>\nДоступ до гри відкрито.",
+        "unblocked_err": "❌ <b>Помилка розблокування:</b>\n<code>{err}</code>",
+        "timer_30_ok": "⏳ <b>Roblox РОЗБЛОКОВАНО на 30 хвилин!</b>\nТаймер запущено. Через 30 хвилин Roblox автоматично заблокується знову.",
+        "timer_60_ok": "⏳ <b>Roblox РОЗБЛОКОВАНО на 1 годину!</b>\nТаймер запущено. Через 60 хвилин Roblox автоматично заблокується знову.",
+        "time_up": "⏰ <b>Час вичерпано!</b>\nRoblox автоматично <b>ЗАБЛОКОВАНО</b>.",
+        "settings_menu": "⚙️ <b>Налаштування</b>\n\nПоточна мова: 🇺🇦 <b>Українська</b>\nОберіть дію нижче:",
+        "choose_lang": "🌐 <b>Оберіть мову / Please choose your language:</b>",
+        "unknown_cmd": "Невідома команда. Будь ласка, використовуйте кнопки меню нижче.",
+        "alert_attempt": (
+            "🚨 <b>Спроба підключення до Roblox заблокована!</b>\n\n"
+            "Хтось на цьому комп'ютері щойно намагався запустити Roblox або Sober.\n"
+            "• <b>Відкинуто пакетів:</b> {diff}\n"
+            "• <b>Час:</b> <code>{ts}</code>\n"
+            "• <b>Стан:</b> 🔴 ЗАБЛОКОВАНО"
+        ),
+        "report_title": "📊 <b>Звіт батьківського контролю</b>\n━━━━━━━━━━━━━━━━━━━━",
+        "report_packets": "🛡️ <b>Всього заблоковано пакетів з'єднання:</b> {count}",
+        "report_last": "🕒 <b>Остання зафіксована спроба:</b> {last}",
+        "report_pin": "🔐 <b>Захист PIN-кодом у консолі:</b> {pin}",
+        "report_timer": "⏱️ <b>Таймер тимчасового доступу:</b> {timer}",
+        "report_diag": "<b>Діагностика системи:</b>\n<code>{diag}</code>",
+        "pin_active": "🔒 Активовано (Захист від обходу)",
+        "pin_disabled": "⚠️ Не встановлено",
+        "timer_active": "Активний (залишилось {rem} хв)",
+        "timer_none": "Немає",
+        "denied": (
+            "⛔ <b>Доступ заборонено</b>\n\n"
+            "Ви не зареєстровані як батько на цій системі.\n"
+            "Ваш Telegram ID: <code>{user_id}</code>\n\n"
+            "Щоб надати доступ цьому акаунту, виконайте на комп'ютері:\n"
+            "<code>sudo rlb add parent {user_id}</code>"
+        )
+    }
+}
+
+
 def get_config_file():
     for p in CONFIG_PATHS:
         if os.path.exists(p):
@@ -74,13 +197,47 @@ def has_pin_configured():
 def load_config():
     config_file = get_config_file()
     if not os.path.exists(config_file):
-        return {"bot_token": "", "parents": []}
+        return {"bot_token": "", "parents": [], "user_languages": {}}
     try:
         with open(config_file, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+            if "user_languages" not in data:
+                data["user_languages"] = {}
+            return data
     except Exception as e:
         print(f"[!] Error loading config: {e}", file=sys.stderr)
-        return {"bot_token": "", "parents": []}
+        return {"bot_token": "", "parents": [], "user_languages": {}}
+
+
+def save_config(config_data):
+    config_file = get_config_file()
+    os.makedirs(os.path.dirname(config_file), exist_ok=True)
+    try:
+        with open(config_file, "w", encoding="utf-8") as f:
+            json.dump(config_data, f, indent=2)
+        os.chmod(config_file, 0o600)
+    except Exception as e:
+        print(f"[!] Error saving config: {e}", file=sys.stderr)
+
+
+def get_user_lang(user_id, config):
+    user_langs = config.get("user_languages", {})
+    return user_langs.get(str(user_id))
+
+
+def set_user_lang(user_id, lang_code, config):
+    if "user_languages" not in config:
+        config["user_languages"] = {}
+    config["user_languages"][str(user_id)] = lang_code
+    save_config(config)
+
+
+def t(lang, key, **kwargs):
+    l = lang if lang in STRINGS else "uk"
+    template = STRINGS[l].get(key, STRINGS["en"].get(key, ""))
+    if kwargs:
+        return template.format(**kwargs)
+    return template
 
 
 def load_stats():
@@ -133,18 +290,40 @@ def send_message(token, chat_id, text, reply_markup=None):
     return tg_api_request(token, "sendMessage", payload)
 
 
-def broadcast_parents(token, config, text):
+def broadcast_parents(token, config, text_getter):
     parents = config.get("parents", [])
     for p in parents:
+        lang = get_user_lang(p, config) or "uk"
+        text = text_getter(lang)
         send_message(token, p, text)
 
 
-def get_main_keyboard():
+def get_language_keyboard():
     return {
         "keyboard": [
-            [{"text": "🔴 Block Roblox"}, {"text": "🟢 Unblock Roblox"}],
-            [{"text": "⏱️ Allow for 30m"}, {"text": "⏱️ Allow for 1h"}],
-            [{"text": "📊 Stats & Report"}, {"text": "❓ Help"}]
+            [{"text": "🇺🇦 Українська"}, {"text": "🇬🇧 English"}]
+        ],
+        "resize_keyboard": True
+    }
+
+
+def get_settings_keyboard(lang):
+    return {
+        "keyboard": [
+            [{"text": t(lang, "btn_lang")}],
+            [{"text": t(lang, "btn_back")}]
+        ],
+        "resize_keyboard": True
+    }
+
+
+def get_main_keyboard(lang):
+    return {
+        "keyboard": [
+            [{"text": t(lang, "btn_block")}, {"text": t(lang, "btn_unblock")}],
+            [{"text": t(lang, "btn_allow_30")}, {"text": t(lang, "btn_allow_60")}],
+            [{"text": t(lang, "btn_stats")}, {"text": t(lang, "btn_settings")}],
+            [{"text": t(lang, "btn_help")}]
         ],
         "resize_keyboard": True
     }
@@ -187,7 +366,7 @@ def cancel_active_timer():
         timer_chat_id = None
 
 
-def schedule_auto_block(token, chat_id, minutes):
+def schedule_auto_block(token, chat_id, minutes, lang):
     global timer_end_time, timer_chat_id, timer_thread
 
     with timer_lock:
@@ -216,8 +395,8 @@ def schedule_auto_block(token, chat_id, minutes):
             send_message(
                 token,
                 target_chat,
-                "⏰ <b>Time's up!</b>\nRoblox has been automatically <b>BLOCKED</b>.",
-                get_main_keyboard()
+                t(lang, "time_up"),
+                get_main_keyboard(lang)
             )
 
     timer_thread = threading.Thread(target=worker, daemon=True)
@@ -243,17 +422,10 @@ def monitor_connection_attempts(token, config):
             stats["last_attempt"] = now_str
             save_stats(stats)
 
-            # Anti-spam cooldown (alert at most once every 2 minutes)
+            # Anti-spam cooldown (at most once per 2 minutes)
             if time.time() - last_alert_time > 120:
                 last_alert_time = time.time()
-                alert_text = (
-                    f"🚨 <b>Roblox Connection Attempt Blocked!</b>\n\n"
-                    f"A device on this Linux PC just attempted to connect to Roblox servers.\n"
-                    f"• <b>Packets dropped:</b> {diff}\n"
-                    f"• <b>Timestamp:</b> <code>{now_str}</code>\n"
-                    f"• <b>Current state:</b> 🔴 BLOCKED"
-                )
-                broadcast_parents(token, config, alert_text)
+                broadcast_parents(token, config, lambda l: t(l, "alert_attempt", diff=diff, ts=now_str))
         else:
             last_packet_count = current_count
 
@@ -272,94 +444,105 @@ def handle_update(token, update, config):
 
     # Authorization Check
     if user_id not in parents:
-        denied_msg = (
-            f"⛔ <b>Access Denied</b>\n\n"
-            f"You are not registered as a parent on this system.\n"
-            f"Your Telegram ID: <code>{user_id}</code>\n\n"
-            f"To authorize this account, run on the Linux machine:\n"
-            f"<code>sudo rlb add parent {user_id}</code>"
-        )
+        denied_msg = t("uk", "denied", user_id=user_id)
         send_message(token, chat_id, denied_msg)
         return
 
-    keyboard = get_main_keyboard()
+    current_lang = get_user_lang(user_id, config)
 
-    if text in ["/start", "❓ Help", "/help"]:
-        help_msg = (
-            f"👋 <b>RobloxLinuxBlocker Parental Control</b>\n\n"
-            f"You have remote administrative control over this machine.\n\n"
-            f"<b>Available options:</b>\n"
-            f"• 🔴 <b>Block Roblox:</b> Immediately block all Roblox traffic.\n"
-            f"• 🟢 <b>Unblock Roblox:</b> Allow gameplay with no time restriction.\n"
-            f"• ⏱️ <b>Allow for 30m / 1h:</b> Temporary access; auto-blocks on expiry.\n"
-            f"• 📊 <b>Stats & Report:</b> View blocked connection attempts and status.\n"
-            f"• 🚨 <b>Intrusion Alerts:</b> You will receive automated alerts when access is attempted."
-        )
-        send_message(token, chat_id, help_msg, keyboard)
+    # 1. If language is not selected yet, or user picked a language option
+    if text == "🇺🇦 Українська":
+        set_user_lang(user_id, "uk", config)
+        send_message(token, chat_id, t("uk", "lang_selected"), get_main_keyboard("uk"))
+        send_message(token, chat_id, t("uk", "welcome"), get_main_keyboard("uk"))
+        return
+    elif text == "🇬🇧 English":
+        set_user_lang(user_id, "en", config)
+        send_message(token, chat_id, t("en", "lang_selected"), get_main_keyboard("en"))
+        send_message(token, chat_id, t("en", "welcome"), get_main_keyboard("en"))
+        return
 
-    elif text in ["🔴 Block Roblox", "/block"]:
+    # If user has no language selected yet, force prompt
+    if not current_lang:
+        send_message(token, chat_id, t("en", "choose_lang"), get_language_keyboard())
+        return
+
+    lang = current_lang
+
+    # 2. Main commands dispatching
+    if text in ["/start", t(lang, "btn_help"), "/help", "❓ Help", "❓ Довідка"]:
+        send_message(token, chat_id, t(lang, "welcome"), get_main_keyboard(lang))
+
+    elif text in [t(lang, "btn_block"), "🔴 Block Roblox", "🔴 Заблокувати Roblox", "/block"]:
         cancel_active_timer()
         success, out = run_rlb_cmd("on")
         if success:
-            msg = "🚫 <b>Roblox is now BLOCKED!</b>\nAll network traffic to Roblox servers has been blocked."
+            msg = t(lang, "blocked_ok")
         else:
-            msg = f"❌ <b>Failed to block Roblox:</b>\n<code>{out[:300]}</code>"
-        send_message(token, chat_id, msg, keyboard)
+            msg = t(lang, "blocked_err", err=out[:300])
+        send_message(token, chat_id, msg, get_main_keyboard(lang))
 
-    elif text in ["🟢 Unblock Roblox", "/unblock"]:
+    elif text in [t(lang, "btn_unblock"), "🟢 Unblock Roblox", "🟢 Розблокувати Roblox", "/unblock"]:
         cancel_active_timer()
         success, out = run_rlb_cmd("off", bypass_pin=True)
         if success:
-            msg = "✅ <b>Roblox has been UNBLOCKED.</b>\nGameplay is now allowed."
+            msg = t(lang, "unblocked_ok")
         else:
-            msg = f"❌ <b>Failed to unblock Roblox:</b>\n<code>{out[:300]}</code>"
-        send_message(token, chat_id, msg, keyboard)
+            msg = t(lang, "unblocked_err", err=out[:300])
+        send_message(token, chat_id, msg, get_main_keyboard(lang))
 
-    elif text in ["⏱️ Allow for 30m", "/allow30"]:
+    elif text in [t(lang, "btn_allow_30"), "⏱️ Allow for 30m", "⏱️ Дозволити на 30хв", "/allow30"]:
         cancel_active_timer()
         success, out = run_rlb_cmd("off", bypass_pin=True)
         if success:
-            schedule_auto_block(token, chat_id, 30)
-            msg = "⏳ <b>Roblox is UNBLOCKED for 30 minutes!</b>\nA countdown timer has started. Roblox will be automatically blocked in 30 minutes."
+            schedule_auto_block(token, chat_id, 30, lang)
+            msg = t(lang, "timer_30_ok")
         else:
-            msg = f"❌ <b>Failed to unblock:</b>\n<code>{out[:300]}</code>"
-        send_message(token, chat_id, msg, keyboard)
+            msg = t(lang, "unblocked_err", err=out[:300])
+        send_message(token, chat_id, msg, get_main_keyboard(lang))
 
-    elif text in ["⏱️ Allow for 1h", "/allow60"]:
+    elif text in [t(lang, "btn_allow_60"), "⏱️ Allow for 1h", "⏱️ Дозволити на 1год", "/allow60"]:
         cancel_active_timer()
         success, out = run_rlb_cmd("off", bypass_pin=True)
         if success:
-            schedule_auto_block(token, chat_id, 60)
-            msg = "⏳ <b>Roblox is UNBLOCKED for 1 hour!</b>\nA countdown timer has started. Roblox will be automatically blocked in 60 minutes."
+            schedule_auto_block(token, chat_id, 60, lang)
+            msg = t(lang, "timer_60_ok")
         else:
-            msg = f"❌ <b>Failed to unblock:</b>\n<code>{out[:300]}</code>"
-        send_message(token, chat_id, msg, keyboard)
+            msg = t(lang, "unblocked_err", err=out[:300])
+        send_message(token, chat_id, msg, get_main_keyboard(lang))
 
-    elif text in ["📊 Stats & Report", "/stats", "📊 Status"]:
+    elif text in [t(lang, "btn_settings"), "⚙️ Settings", "⚙️ Налаштування", "/settings"]:
+        send_message(token, chat_id, t(lang, "settings_menu"), get_settings_keyboard(lang))
+
+    elif text in [t(lang, "btn_lang"), "🌐 Change Language", "🌐 Змінити мову"]:
+        send_message(token, chat_id, t(lang, "choose_lang"), get_language_keyboard())
+
+    elif text in [t(lang, "btn_back"), "⬅️ Back", "⬅️ Назад"]:
+        send_message(token, chat_id, t(lang, "welcome"), get_main_keyboard(lang))
+
+    elif text in [t(lang, "btn_stats"), "📊 Stats & Report", "📊 Статистика та звіт", "/stats", "📊 Status"]:
         success, out = run_rlb_cmd("status")
         stats = load_stats()
-        timer_info = "None"
+        timer_info = t(lang, "timer_none")
         with timer_lock:
             if timer_end_time > time.time():
                 remaining = int((timer_end_time - time.time()) / 60)
-                timer_info = f"Active ({remaining} minutes remaining)"
+                timer_info = t(lang, "timer_active", rem=remaining)
 
-        pin_status = "🔒 Active (Tamper-proof)" if has_pin_configured() else "⚠️ Disabled"
+        pin_status = t(lang, "pin_active") if has_pin_configured() else t(lang, "pin_disabled")
 
         msg = (
-            f"📊 <b>Parental Control Report</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🛡️ <b>Total Blocked Connection Packets:</b> {stats.get('attempts', 0)}\n"
-            f"🕒 <b>Last Blocked Attempt:</b> {stats.get('last_attempt', 'None')}\n"
-            f"🔐 <b>Console PIN Protection:</b> {pin_status}\n"
-            f"⏱️ <b>Temporary Access Timer:</b> {timer_info}\n\n"
-            f"<b>System Diagnostic:</b>\n"
-            f"<code>{out.strip()}</code>"
+            f"{t(lang, 'report_title')}\n"
+            f"{t(lang, 'report_packets', count=stats.get('attempts', 0))}\n"
+            f"{t(lang, 'report_last', last=stats.get('last_attempt', 'None'))}\n"
+            f"{t(lang, 'report_pin', pin=pin_status)}\n"
+            f"{t(lang, 'report_timer', timer=timer_info)}\n\n"
+            f"{t(lang, 'report_diag', diag=out.strip())}"
         )
-        send_message(token, chat_id, msg, keyboard)
+        send_message(token, chat_id, msg, get_main_keyboard(lang))
 
     else:
-        send_message(token, chat_id, "Unknown command. Please use the menu buttons below.", keyboard)
+        send_message(token, chat_id, t(lang, "unknown_cmd"), get_main_keyboard(lang))
 
 
 def sig_handler(signum, frame):
@@ -373,7 +556,7 @@ def main():
     signal.signal(signal.SIGINT, sig_handler)
     signal.signal(signal.SIGTERM, sig_handler)
 
-    print("[*] Starting RobloxLinuxBlocker Telegram Bot Daemon...")
+    print("[*] Starting RobloxLinuxBlocker Telegram Bot Daemon (Multilingual)...")
     config = load_config()
     token = config.get("bot_token", "").strip()
 
