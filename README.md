@@ -27,7 +27,7 @@ Includes an **integrated Telegram Bot** allowing parents to remotely block, unbl
   1. **Kernel Blackhole Routes (FIB routing):** Packets destined for Roblox CIDR blocks are immediately dropped by the Linux kernel with zero CPU overhead.
   2. **Netfilter / iptables & ip6tables Rules:** A dedicated `RLB_BLOCK` chain attached to `OUTPUT` and `FORWARD` drops all traffic originating from host applications as well as containerized sandbox environments (such as Flatpak and Bubblewrap).
   3. **DNS Sinkholing via `/etc/hosts`:** Routes all Roblox login, API, asset delivery, and CDN domains to `0.0.0.0` and `::1`.
-- 🤖 **Guaranteed Sober / Flatpak Compatibility:** Because Flatpak and Sober share the host's network namespace (`--share=network`) and inherit the host `/etc/hosts`, gameplay through Sober is completely disabled (connection timeouts, authentication failure, and instant termination of active sessions).
+- 🤖 **Guaranteed Sober / Flatpak Compatibility:** Because Flatpak and Sober share the host's network namespace (`--share=network`) and inherit the host `/etc/hosts`, gameplay through Sober is completely disabled (connection timeouts, authentication failure, and dropped game packets) purely at the network layer without killing browser or desktop processes.
 - 📱 **Telegram Bot Parental Controls:** Remotely block or unblock Roblox from anywhere using interactive Telegram buttons, or grant temporary access (e.g. 30 minutes or 1 hour) with automatic re-blocking when the timer expires!
 - 🚀 **Intuitive CLI Commands:** Single-word controls (`rlb auto`, `rlb off`, `rlb on`, `rlb status`, `rlb add parent`, etc.).
 - 🔄 **Persistent Autostart via systemd:** Starts automatically on system boot.
@@ -94,7 +94,7 @@ sudo rlb bot start
 
 ### Step 3: Use the Bot in Telegram
 Once authorized, open your bot in Telegram and use the interactive menu:
-- 🔴 **Block Roblox:** Immediately cuts off all Roblox connections and terminates active Sober sessions.
+- 🔴 **Block Roblox:** Immediately cuts off all Roblox network traffic at the kernel level.
 - 🟢 **Unblock Roblox:** Allows unrestricted gameplay.
 - ⏱️ **Allow for 30m / 1h:** Temporarily unblocks Roblox and begins a countdown. When time is up, the bot automatically re-blocks Roblox and sends you an alert!
 - 📊 **Status:** Returns live firewall, routing, and timer status.
@@ -154,7 +154,7 @@ sudo make uninstall
 **RobloxLinuxBlocker stops Sober on three levels:**
 1. **Network Namespace:** Flatpak shares the host network interface. The `ip route blackhole` and `iptables` rules drop all outgoing UDP/TCP packets going to Roblox AS22697 game servers (UDP ports 1024–65535).
 2. **DNS & API Isolation:** Flatpak mounts the host `/etc/hosts` file. Sober cannot connect to `auth.roblox.com` or `apis.roblox.com` to log in, fetch updates, or download game assets.
-3. **Session Killer:** Running `sudo rlb on` or clicking "Block" in Telegram detects and immediately terminates any active Sober sessions.
+3. **No Process Termination Needed:** Blocking works entirely through kernel packet dropping and DNS routing, so user browser sessions, desktop windows, and unsaved work in other apps are never killed or interrupted.
 
 ---
 

@@ -198,7 +198,7 @@ def handle_update(token, update, config):
         cancel_active_timer()
         success, out = run_rlb_cmd("on")
         if success:
-            msg = "🚫 <b>Roblox is now BLOCKED!</b>\nAll network connections and Sober sessions have been cut off."
+            msg = "🚫 <b>Roblox is now BLOCKED!</b>\nAll network traffic to Roblox servers has been blocked."
         else:
             msg = f"❌ <b>Failed to block Roblox:</b>\n<code>{out[:300]}</code>"
         send_message(token, chat_id, msg, keyboard)

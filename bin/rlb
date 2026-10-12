@@ -220,29 +220,14 @@ unblock_hosts() {
     log_success "/etc/hosts cleared."
 }
 
-terminate_sober_processes() {
-    log_info "Checking for active Sober / Roblox processes..."
-    local killed=0
-    for proc in sober sober.bin Vinegar "org.vinegarhq.Sober"; do
-        if pgrep -fi "$proc" &>/dev/null; then
-            pkill -9 -fi "$proc" 2>/dev/null || true
-            killed=1
-        fi
-    done
-    if [[ $killed -eq 1 ]]; then
-        log_warn "Active Sober / Roblox sessions were forcibly terminated!"
-    fi
-}
-
 # --- Main Actions ---
 
 do_on() {
     echo -e "${BOLD}${CYAN}=== Enabling Roblox Block (IP, DNS, Sober) ===${NC}"
-    terminate_sober_processes
     block_routes
     block_iptables
     block_hosts
-    echo -e "${GREEN}${BOLD}✔ Roblox is COMPLETELY BLOCKED! (Sober & native connections dropped)${NC}\n"
+    echo -e "${GREEN}${BOLD}✔ Roblox is COMPLETELY BLOCKED! (All traffic dropped via kernel)${NC}\n"
 }
 
 do_off() {
@@ -371,7 +356,7 @@ do_status() {
     # 5. Check Sober processes
     echo -n "Sober / Roblox Client: "
     if pgrep -fi "sober" &>/dev/null; then
-        echo -e "${YELLOW}RUNNING (will be terminated on 'rlb on')${NC}"
+        echo -e "${YELLOW}RUNNING (traffic blocked via kernel)${NC}"
     else
         echo -e "${GREEN}Not running${NC}"
     fi
