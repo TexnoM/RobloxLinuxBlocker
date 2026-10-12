@@ -32,7 +32,7 @@
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/rxuser/RobloxLinuxBlocker.git
+   git clone https://github.com/TexnoM/RobloxLinuxBlocker.git
    cd RobloxLinuxBlocker
    ```
 
@@ -44,7 +44,7 @@
 ### Method 2: Using Make
 
 ```bash
-git clone https://github.com/rxuser/RobloxLinuxBlocker.git
+git clone https://github.com/TexnoM/RobloxLinuxBlocker.git
 cd RobloxLinuxBlocker
 sudo make install
 ```

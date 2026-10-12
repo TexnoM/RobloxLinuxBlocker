@@ -1,6 +1,6 @@
 [Unit]
 Description=Roblox Linux Blocker (RLB)
-Documentation=https://github.com/rxuser/RobloxLinuxBlocker
+Documentation=https://github.com/TexnoM/RobloxLinuxBlocker
 After=network.target network-online.target
 Wants=network-online.target
 
