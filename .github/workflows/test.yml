@@ -21,7 +21,5 @@ jobs:
           bash -n uninstall.sh
 
       - name: Run ShellCheck
-        uses: ludeeus/action-shellcheck@master
-        with:
-          scandir: '.'
-          ignore_paths: '.system_generated'
+        run: |
+          shellcheck bin/rlb install.sh uninstall.sh

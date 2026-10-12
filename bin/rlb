@@ -333,9 +333,9 @@ do_status() {
 
     # 2. Check blackhole routes
     local blackhole_v4_count
-    blackhole_v4_count=$(ip route show 2>/dev/null | grep -E "blackhole" | wc -l)
+    blackhole_v4_count=$(ip route show 2>/dev/null | grep -c "blackhole" || true)
     local blackhole_v6_count
-    blackhole_v6_count=$(ip -6 route show 2>/dev/null | grep -E "blackhole" | wc -l)
+    blackhole_v6_count=$(ip -6 route show 2>/dev/null | grep -c "blackhole" || true)
     echo -n "Kernel Routes (Blackhole FIB): "
     if [[ "$blackhole_v4_count" -gt 0 || "$blackhole_v6_count" -gt 0 ]]; then
         echo -e "${GREEN}ACTIVE ($blackhole_v4_count IPv4, $blackhole_v6_count IPv6)${NC}"
@@ -347,7 +347,7 @@ do_status() {
     echo -n "Firewall (iptables): "
     if iptables -L "$IPTABLES_CHAIN" -n &>/dev/null; then
         local rule_count
-        rule_count=$(iptables -L "$IPTABLES_CHAIN" -n 2>/dev/null | grep -E "REJECT|DROP" | wc -l)
+        rule_count=$(iptables -L "$IPTABLES_CHAIN" -n 2>/dev/null | grep -c -E "REJECT|DROP" || true)
         echo -e "${GREEN}ACTIVE ($rule_count blocking rules)${NC}"
     else
         echo -e "${RED}INACTIVE${NC}"
@@ -357,7 +357,7 @@ do_status() {
     echo -n "DNS Blocking (/etc/hosts): "
     if grep -q "$HOSTS_MARKER_START" /etc/hosts 2>/dev/null; then
         local hosts_count
-        hosts_count=$(sed -n "/$HOSTS_MARKER_START/,/$HOSTS_MARKER_END/p" /etc/hosts | grep "0.0.0.0" | wc -l)
+        hosts_count=$(sed -n "/$HOSTS_MARKER_START/,/$HOSTS_MARKER_END/p" /etc/hosts | grep -c "0.0.0.0" || true)
         echo -e "${GREEN}ACTIVE ($hosts_count domains blocked)${NC}"
     else
         echo -e "${RED}INACTIVE${NC}"
