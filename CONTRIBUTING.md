@@ -1,26 +1,26 @@
-# Внесок у розвиток RobloxLinuxBlocker (Contributing)
+# Contributing to RobloxLinuxBlocker
 
-Дякуємо за ваш інтерес до проєкту **RobloxLinuxBlocker (RLB)**!
+Thank you for your interest in contributing to **RobloxLinuxBlocker (RLB)**!
 
-## Як зробити внесок
+## How to Contribute
 
-1. **Форкніть репозиторій** (Fork) на GitHub.
-2. **Створіть нову гілку**:
+1. **Fork the repository** on GitHub.
+2. **Create a new branch**:
    ```bash
-   git checkout -b feature/awesome-improvement
+   git checkout -b feature/improvement-name
    ```
-3. **Внесіть ваші зміни**.
-   - Переконайтеся, що всі bash-скрипти проходять перевірку синтаксису:
+3. **Make your changes**:
+   - Ensure all scripts pass syntax validation:
      ```bash
      make test
      ```
-   - Якщо додаються нові підмережі або домени Roblox, переконайтеся в їхній достовірності через офіційні реєстри (RADb, RIPEstat, ARIN).
-4. **Зробіть коміт із чітким описом**:
+   - If adding new Roblox IP ranges or domains, make sure they are verified via official registries (RADb, RIPEstat AS22697, ARIN RC-376).
+4. **Commit your changes**:
    ```bash
-   git commit -m "feat: додано новий діапазон IP або покращено логіку"
+   git commit -m "feat: add new Roblox IP prefix or improve blocking rule"
    ```
-5. **Надішліть гілку** у свій форк і відкрийте **Pull Request**.
+5. **Push and create a Pull Request**.
 
-## Ліцензія
+## License
 
-Надсилаючи свій внесок, ви погоджуєтеся ліцензувати свій код на умовах ліцензії **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+By contributing to this repository, you agree that your contributions will be licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.

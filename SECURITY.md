@@ -1,17 +1,17 @@
-# Політика безпеки (Security Policy)
+# Security Policy
 
-## Підтримувані версії
+## Supported Versions
 
-| Версія | Підтримується |
-| ------- | ------------- |
+| Version | Supported          |
+| ------- | ------------------ |
 | 1.0.x   | :white_check_mark: |
 
-## Повідомлення про вразливість
+## Reporting a Vulnerability
 
-Якщо ви виявили вразливість безпеки або спосіб обходу блокування у RobloxLinuxBlocker, будь ласка:
+If you discover a security vulnerability or a traffic bypass method in RobloxLinuxBlocker:
 
-1. Не створюйте публічний issue з експлойтом.
-2. Створіть приватний Security Advisory у репозиторії GitHub або напишіть мейнтейнеру напряму.
-3. Опишіть детальні кроки для відтворення (дистрибутив Linux, версія Sober/Roblox, команди).
+1. Please do NOT open a public issue with bypass exploits.
+2. Open a private Security Advisory on GitHub or reach out to the maintainers directly.
+3. Provide detailed steps to reproduce the issue (Linux distribution, Sober version, network environment).
 
-Ми намагаємося реагувати та виправляти витоки трафіку якнайшвидше.
+We strive to address and patch network bypasses as swiftly as possible.
