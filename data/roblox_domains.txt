@@ -1,0 +1,73 @@
+# ==============================================================================
+# RobloxLinuxBlocker - Roblox Official Domains and Subdomains
+# License: GNU Affero General Public License v3.0 (AGPL-3.0)
+# ==============================================================================
+
+roblox.com
+www.roblox.com
+web.roblox.com
+api.roblox.com
+apis.roblox.com
+auth.roblox.com
+games.roblox.com
+accountsettings.roblox.com
+accountinformation.roblox.com
+assetdelivery.roblox.com
+avatar.roblox.com
+badges.roblox.com
+billing.roblox.com
+chat.roblox.com
+clientsettings.api.roblox.com
+client-telemetry.roblox.com
+develop.roblox.com
+economy.roblox.com
+ecsv2.roblox.com
+friends.roblox.com
+gamepersistence.roblox.com
+groups.roblox.com
+inventory.roblox.com
+itemconfiguration.roblox.com
+locale.roblox.com
+matchmaking.roblox.com
+metrics.roblox.com
+notifications.roblox.com
+points.roblox.com
+presence.roblox.com
+publish.roblox.com
+realtime.roblox.com
+textfilter.roblox.com
+thumbnails.roblox.com
+users.roblox.com
+versioncompat.api.roblox.com
+versioncompatibility.api.roblox.com
+voice.roblox.com
+
+# CDN and Asset Distribution
+rbxcdn.com
+setup.rbxcdn.com
+t0.rbxcdn.com
+t1.rbxcdn.com
+t2.rbxcdn.com
+t3.rbxcdn.com
+t4.rbxcdn.com
+t5.rbxcdn.com
+t6.rbxcdn.com
+t7.rbxcdn.com
+c0.rbxcdn.com
+c1.rbxcdn.com
+c2.rbxcdn.com
+c3.rbxcdn.com
+c4.rbxcdn.com
+c5.rbxcdn.com
+c6.rbxcdn.com
+c7.rbxcdn.com
+roblox-cdn.com
+
+# Testing and Regional Domains
+robloxlabs.com
+sitetest.robloxlabs.com
+sitetest1.robloxlabs.com
+sitetest2.robloxlabs.com
+sitetest3.robloxlabs.com
+roblox.cn
+www.roblox.cn

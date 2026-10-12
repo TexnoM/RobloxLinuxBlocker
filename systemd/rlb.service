@@ -1,0 +1,14 @@
+[Unit]
+Description=Roblox Linux Blocker (RLB)
+Documentation=https://github.com/rxuser/RobloxLinuxBlocker
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/rlb on
+ExecStop=/usr/local/bin/rlb off
+
+[Install]
+WantedBy=multi-user.target

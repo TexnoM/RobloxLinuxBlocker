@@ -1,0 +1,21 @@
+# System and editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+
+# Testing & Artifacts
+scratch/
+.system_generated/

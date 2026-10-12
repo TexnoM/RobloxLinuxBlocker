@@ -1,0 +1,562 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# RobloxLinuxBlocker (rlb)
+# Повне блокування всіх IP-адрес та доменів Roblox на Linux (включно з Sober).
+# 
+# Ліцензія: GNU Affero General Public License v3.0 (AGPL-3.0)
+# ==============================================================================
+
+set -e
+
+# --- Кольори та форматування ---
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# --- Шляхи та константи ---
+APP_NAME="RobloxLinuxBlocker"
+VERSION="1.0.0"
+SYSTEMD_SERVICE="rlb.service"
+
+HOSTS_MARKER_START="# --- ROBLOX-LINUX-BLOCKER-START ---"
+HOSTS_MARKER_END="# --- ROBLOX-LINUX-BLOCKER-END ---"
+IPTABLES_CHAIN="RLB_BLOCK"
+
+# Визначення розташування файлів конфігурації
+REAL_SCRIPT_PATH="$(readlink -f "$0")"
+SCRIPT_DIR="$(dirname "$REAL_SCRIPT_PATH")"
+
+if [[ -f "/etc/rlb/roblox_ips.txt" ]]; then
+    IP_FILE="/etc/rlb/roblox_ips.txt"
+    DOMAIN_FILE="/etc/rlb/roblox_domains.txt"
+elif [[ -f "${SCRIPT_DIR}/../data/roblox_ips.txt" ]]; then
+    IP_FILE="${SCRIPT_DIR}/../data/roblox_ips.txt"
+    DOMAIN_FILE="${SCRIPT_DIR}/../data/roblox_domains.txt"
+elif [[ -f "${SCRIPT_DIR}/data/roblox_ips.txt" ]]; then
+    IP_FILE="${SCRIPT_DIR}/data/roblox_ips.txt"
+    DOMAIN_FILE="${SCRIPT_DIR}/data/roblox_domains.txt"
+else
+    IP_FILE="/etc/rlb/roblox_ips.txt"
+    DOMAIN_FILE="/etc/rlb/roblox_domains.txt"
+fi
+
+# --- Допоміжні функції ---
+
+check_root() {
+    if [[ $EUID -ne 0 ]]; then
+        echo -e "${YELLOW}[!] Ця команда вимагає прав root. Перезапуск через sudo...${NC}"
+        exec sudo bash "$0" "$@"
+    fi
+}
+
+log_info() {
+    echo -e "${CYAN}[INFO]${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}[OK]${NC} $1"
+}
+
+log_warn() {
+    echo -e "${YELLOW}[УВАГА]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ПОМИЛКА]${NC} $1"
+}
+
+get_subnets() {
+    if [[ ! -f "$IP_FILE" ]]; then
+        log_error "Файл зі списком IP не знайдено: $IP_FILE"
+        return 1
+    fi
+    grep -E '^[0-9a-fA-F:.]+' "$IP_FILE" | awk '{print $1}'
+}
+
+get_domains() {
+    if [[ ! -f "$DOMAIN_FILE" ]]; then
+        log_error "Файл зі списком доменів не знайдено: $DOMAIN_FILE"
+        return 1
+    fi
+    grep -E '^[a-zA-Z0-9.-]+' "$DOMAIN_FILE" | awk '{print $1}'
+}
+
+# --- Логіка Блокування ---
+
+block_routes() {
+    log_info "Застосування blackhole маршрутів ядра Linux..."
+    local count=0
+    while IFS= read -r subnet; do
+        [[ -z "$subnet" ]] && continue
+        if [[ "$subnet" =~ : ]]; then
+            # IPv6
+            if ip -6 route show | grep -q "$subnet"; then
+                :
+            else
+                ip -6 route add blackhole "$subnet" 2>/dev/null || true
+            fi
+        else
+            # IPv4
+            if ip route show | grep -q "$subnet"; then
+                :
+            else
+                ip route add blackhole "$subnet" 2>/dev/null || true
+            fi
+        fi
+        ((count++))
+    done < <(get_subnets)
+    log_success "Маршрутизація blackhole налаштована для $count підмереж."
+}
+
+unblock_routes() {
+    log_info "Видалення blackhole маршрутів ядра Linux..."
+    local count=0
+    while IFS= read -r subnet; do
+        [[ -z "$subnet" ]] && continue
+        if [[ "$subnet" =~ : ]]; then
+            ip -6 route del blackhole "$subnet" 2>/dev/null || true
+        else
+            ip route del blackhole "$subnet" 2>/dev/null || true
+        fi
+        ((count++))
+    done < <(get_subnets)
+    log_success "Blackhole маршрути очищено."
+}
+
+block_iptables() {
+    log_info "Налаштування правил iptables / ip6tables..."
+
+    # IPv4 iptables
+    if command -v iptables &>/dev/null; then
+        iptables -N "$IPTABLES_CHAIN" 2>/dev/null || iptables -F "$IPTABLES_CHAIN"
+        
+        # Перевірка наявності в ланцюжках OUTPUT та FORWARD
+        iptables -C OUTPUT -j "$IPTABLES_CHAIN" 2>/dev/null || iptables -I OUTPUT 1 -j "$IPTABLES_CHAIN"
+        iptables -C FORWARD -j "$IPTABLES_CHAIN" 2>/dev/null || iptables -I FORWARD 1 -j "$IPTABLES_CHAIN"
+
+        while IFS= read -r subnet; do
+            [[ -z "$subnet" ]] && continue
+            if [[ ! "$subnet" =~ : ]]; then
+                iptables -A "$IPTABLES_CHAIN" -d "$subnet" -j REJECT --reject-with icmp-port-unreachable 2>/dev/null || \
+                iptables -A "$IPTABLES_CHAIN" -d "$subnet" -j DROP 2>/dev/null || true
+            fi
+        done < <(get_subnets)
+        log_success "IPv4 iptables ланцюжок '$IPTABLES_CHAIN' активовано."
+    fi
+
+    # IPv6 ip6tables
+    if command -v ip6tables &>/dev/null; then
+        ip6tables -N "$IPTABLES_CHAIN" 2>/dev/null || ip6tables -F "$IPTABLES_CHAIN"
+
+        ip6tables -C OUTPUT -j "$IPTABLES_CHAIN" 2>/dev/null || ip6tables -I OUTPUT 1 -j "$IPTABLES_CHAIN"
+        ip6tables -C FORWARD -j "$IPTABLES_CHAIN" 2>/dev/null || ip6tables -I FORWARD 1 -j "$IPTABLES_CHAIN"
+
+        while IFS= read -r subnet; do
+            [[ -z "$subnet" ]] && continue
+            if [[ "$subnet" =~ : ]]; then
+                ip6tables -A "$IPTABLES_CHAIN" -d "$subnet" -j REJECT 2>/dev/null || \
+                ip6tables -A "$IPTABLES_CHAIN" -d "$subnet" -j DROP 2>/dev/null || true
+            fi
+        done < <(get_subnets)
+        log_success "IPv6 ip6tables ланцюжок '$IPTABLES_CHAIN' активовано."
+    fi
+}
+
+unblock_iptables() {
+    log_info "Видалення правил iptables / ip6tables..."
+
+    if command -v iptables &>/dev/null; then
+        iptables -D OUTPUT -j "$IPTABLES_CHAIN" 2>/dev/null || true
+        iptables -D FORWARD -j "$IPTABLES_CHAIN" 2>/dev/null || true
+        iptables -F "$IPTABLES_CHAIN" 2>/dev/null || true
+        iptables -X "$IPTABLES_CHAIN" 2>/dev/null || true
+    fi
+
+    if command -v ip6tables &>/dev/null; then
+        ip6tables -D OUTPUT -j "$IPTABLES_CHAIN" 2>/dev/null || true
+        ip6tables -D FORWARD -j "$IPTABLES_CHAIN" 2>/dev/null || true
+        ip6tables -F "$IPTABLES_CHAIN" 2>/dev/null || true
+        ip6tables -X "$IPTABLES_CHAIN" 2>/dev/null || true
+    fi
+
+    log_success "Правила iptables/ip6tables очищено."
+}
+
+block_hosts() {
+    log_info "Блокування доменів Roblox у /etc/hosts..."
+    unblock_hosts_silent
+
+    {
+        echo "$HOSTS_MARKER_START"
+        while IFS= read -r domain; do
+            [[ -z "$domain" ]] && continue
+            echo "0.0.0.0 $domain"
+            echo "::1 $domain"
+        done < <(get_domains)
+        echo "$HOSTS_MARKER_END"
+    } >> /etc/hosts
+
+    log_success "Домени Roblox успішно заблоковано в /etc/hosts."
+}
+
+unblock_hosts_silent() {
+    if grep -q "$HOSTS_MARKER_START" /etc/hosts 2>/dev/null; then
+        sed -i "/$HOSTS_MARKER_START/,/$HOSTS_MARKER_END/d" /etc/hosts
+    fi
+}
+
+unblock_hosts() {
+    log_info "Очищення записів Roblox з /etc/hosts..."
+    unblock_hosts_silent
+    log_success "/etc/hosts очищено від блокування Roblox."
+}
+
+terminate_sober_processes() {
+    log_info "Перевірка активних процесів Sober / Roblox..."
+    local killed=0
+    for proc in sober sober.bin Vinegar "org.vinegarhq.Sober"; do
+        if pgrep -fi "$proc" &>/dev/null; then
+            pkill -9 -fi "$proc" 2>/dev/null || true
+            killed=1
+        fi
+    done
+    if [[ $killed -eq 1 ]]; then
+        log_warn "Запущені сесії Sober/Roblox було примусово закрито!"
+    fi
+}
+
+# --- Основні дії ---
+
+do_on() {
+    echo -e "${BOLD}${CYAN}=== Увімкнення блокування Roblox (IP, DNS, Sober) ===${NC}"
+    terminate_sober_processes
+    block_routes
+    block_iptables
+    block_hosts
+    echo -e "${GREEN}${BOLD}✔ Roblox ПОВНІСТЮ ЗАБЛОКОВАНО! (Sober та нативні з'єднання знеструмлено)${NC}\n"
+}
+
+do_off() {
+    echo -e "${BOLD}${YELLOW}=== Вимкнення блокування Roblox ===${NC}"
+    unblock_routes
+    unblock_iptables
+    unblock_hosts
+
+    # Вимкнення служби автостарту, якщо активна
+    if command -v systemctl &>/dev/null; then
+        if systemctl is-enabled "$SYSTEMD_SERVICE" &>/dev/null; then
+            log_info "Вимкнення автостарту служби $SYSTEMD_SERVICE..."
+            systemctl disable "$SYSTEMD_SERVICE" 2>/dev/null || true
+        fi
+        if systemctl is-active "$SYSTEMD_SERVICE" &>/dev/null; then
+            systemctl stop "$SYSTEMD_SERVICE" 2>/dev/null || true
+        fi
+    fi
+
+    echo -e "${GREEN}${BOLD}✔ Блокування успішно вимкнено.${NC}\n"
+}
+
+do_auto() {
+    echo -e "${BOLD}${CYAN}=== Налаштування автостарту RobloxLinuxBlocker ===${NC}"
+    
+    # 1. Застосувати блокування негайно
+    do_on
+
+    # 2. Перевірити наявність та налаштувати systemd сервіс
+    if ! command -v systemctl &>/dev/null; then
+        log_error "systemd (systemctl) не знайдено на цій системі."
+        exit 1
+    fi
+
+    local svc_file="/etc/systemd/system/${SYSTEMD_SERVICE}"
+    if [[ ! -f "$svc_file" ]]; then
+        log_info "Створення systemd служби $svc_file..."
+        local src_svc="${SCRIPT_DIR}/../systemd/${SYSTEMD_SERVICE}"
+        if [[ -f "$src_svc" ]]; then
+            cp "$src_svc" "$svc_file"
+        elif [[ -f "${SCRIPT_DIR}/systemd/${SYSTEMD_SERVICE}" ]]; then
+            cp "${SCRIPT_DIR}/systemd/${SYSTEMD_SERVICE}" "$svc_file"
+        else
+            cat <<EOF > "$svc_file"
+[Unit]
+Description=Roblox Linux Blocker (RLB)
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/rlb on
+ExecStop=/usr/local/bin/rlb off
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        fi
+        chmod 644 "$svc_file"
+    fi
+
+    systemctl daemon-reload
+    systemctl enable "$SYSTEMD_SERVICE"
+    log_success "Автостарт увімкнено! Служба $SYSTEMD_SERVICE активуватиметься при кожному запуску системи."
+    echo -e "${GREEN}${BOLD}✔ Автостарт налаштовано: 'rlb auto' завершено успішно.${NC}\n"
+}
+
+do_noauto() {
+    echo -e "${BOLD}${YELLOW}=== Вимкнення автостарту RobloxLinuxBlocker ===${NC}"
+    if command -v systemctl &>/dev/null; then
+        systemctl disable "$SYSTEMD_SERVICE" 2>/dev/null || true
+        log_success "Автостарт служби $SYSTEMD_SERVICE вимкнено (поточне блокування залишається без змін)."
+    else
+        log_error "systemctl не знайдено."
+    fi
+}
+
+do_status() {
+    echo -e "${BOLD}${CYAN}=== Стан RobloxLinuxBlocker (RLB) ===${NC}"
+
+    # 1. Перевірка автостарту systemd
+    echo -n "Автостарт (systemd): "
+    if command -v systemctl &>/dev/null; then
+        if systemctl is-enabled "$SYSTEMD_SERVICE" &>/dev/null; then
+            echo -e "${GREEN}УВІМКНЕНО (Enabled)${NC}"
+        else
+            echo -e "${YELLOW}ВИМКНЕНО (Disabled)${NC}"
+        fi
+    else
+        echo -e "${RED}systemd відсутній${NC}"
+    fi
+
+    # 2. Перевірка blackhole маршрутів
+    local blackhole_v4_count
+    blackhole_v4_count=$(ip route show 2>/dev/null | grep -E "blackhole" | wc -l)
+    local blackhole_v6_count
+    blackhole_v6_count=$(ip -6 route show 2>/dev/null | grep -E "blackhole" | wc -l)
+    echo -n "Ядерні маршрути (Blackhole FIB): "
+    if [[ "$blackhole_v4_count" -gt 0 || "$blackhole_v6_count" -gt 0 ]]; then
+        echo -e "${GREEN}АКТИВНО ($blackhole_v4_count IPv4, $blackhole_v6_count IPv6)${NC}"
+    else
+        echo -e "${RED}НЕ АКТИВНО${NC}"
+    fi
+
+    # 3. Перевірка iptables
+    echo -n "Брандмауер (iptables): "
+    if iptables -L "$IPTABLES_CHAIN" -n &>/dev/null; then
+        local rule_count
+        rule_count=$(iptables -L "$IPTABLES_CHAIN" -n 2>/dev/null | grep -E "REJECT|DROP" | wc -l)
+        echo -e "${GREEN}АКТИВНО ($rule_count правил блокування)${NC}"
+    else
+        echo -e "${RED}НЕ АКТИВНО${NC}"
+    fi
+
+    # 4. Перевірка /etc/hosts
+    echo -n "Блокування DNS (/etc/hosts): "
+    if grep -q "$HOSTS_MARKER_START" /etc/hosts 2>/dev/null; then
+        local hosts_count
+        hosts_count=$(sed -n "/$HOSTS_MARKER_START/,/$HOSTS_MARKER_END/p" /etc/hosts | grep "0.0.0.0" | wc -l)
+        echo -e "${GREEN}АКТИВНО ($hosts_count заблокованих доменів)${NC}"
+    else
+        echo -e "${RED}НЕ АКТИВНО${NC}"
+    fi
+
+    # 5. Перевірка процесів Sober
+    echo -n "Клієнт Sober / Roblox: "
+    if pgrep -fi "sober" &>/dev/null; then
+        echo -e "${YELLOW}ЗАПУЩЕНО (буде знеструмлено при 'rlb on')${NC}"
+    else
+        echo -e "${GREEN}Не запущено${NC}"
+    fi
+
+    echo ""
+}
+
+do_update() {
+    echo -e "${BOLD}${CYAN}=== Оновлення списку IP-адрес Roblox з RIPEstat/ARIN ===${NC}"
+    log_info "Запит актуальних префіксів для AS22697 (Roblox)..."
+
+    local temp_json
+    temp_json=$(mktemp)
+
+    if curl -s --connect-timeout 10 "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS22697" -o "$temp_json"; then
+        local temp_ips
+        temp_ips=$(mktemp)
+
+        python3 -c "
+import json, ipaddress, sys
+
+prefixes = set()
+
+# Додаємо відомі базові блоки Roblox
+base_blocks = [
+    '128.116.0.0/16',
+    '107.180.192.0/20',
+    '209.206.40.0/21',
+    '205.201.62.0/23',
+    '103.140.28.0/23',
+    '141.193.3.0/24',
+    '208.185.116.0/24',
+    '208.185.166.0/24',
+    '208.185.173.0/24',
+    '216.200.230.0/24',
+    '23.173.192.0/24',
+    '64.125.149.0/24',
+    '2620:135:6000::/40',
+    '2620:2b:e000::/48'
+]
+prefixes.update(base_blocks)
+
+try:
+    with open('$temp_json') as f:
+        data = json.load(f)
+        for p in data.get('data', {}).get('prefixes', []):
+            prefixes.add(p['prefix'])
+except Exception as e:
+    pass
+
+v4, v6 = [], []
+for p in prefixes:
+    try:
+        net = ipaddress.ip_network(p, strict=False)
+        if net.version == 4:
+            v4.append(net)
+        else:
+            v6.append(net)
+    except Exception:
+        pass
+
+v4_opt = sorted(list(ipaddress.collapse_addresses(v4)))
+v6_opt = sorted(list(ipaddress.collapse_addresses(v6)))
+
+print('# Roblox Corporation (AS22697) IP Prefixes')
+print('# Updated dynamically via rlb update')
+print('\n# IPv4')
+for n in v4_opt:
+    print(n)
+print('\n# IPv6')
+for n in v6_opt:
+    print(n)
+" > "$temp_ips"
+
+        if [[ -s "$temp_ips" ]]; then
+            cp "$temp_ips" "$IP_FILE"
+            log_success "Список IP-адрес оновлено: $IP_FILE"
+            rm -f "$temp_json" "$temp_ips"
+
+            # Якщо блокування зараз активне, оновити правила
+            if iptables -L "$IPTABLES_CHAIN" -n &>/dev/null; then
+                log_info "Оновлення активних правил блокування..."
+                do_on
+            fi
+        else
+            log_error "Не вдалося отримати валідні дані."
+            rm -f "$temp_json" "$temp_ips"
+            return 1
+        fi
+    else
+        log_error "Помилка підключення до API RIPEstat."
+        rm -f "$temp_json"
+        return 1
+    fi
+}
+
+do_test() {
+    echo -e "${BOLD}${CYAN}=== Перевірка блокування Roblox ===${NC}"
+    local blocked=1
+
+    echo -n "1. Перевірка домену roblox.com (DNS & HTTP): "
+    if curl -s --connect-timeout 2 -m 3 http://roblox.com &>/dev/null || curl -s --connect-timeout 2 -m 3 https://roblox.com &>/dev/null; then
+        echo -e "${RED}ПРОПУСКАЄ (НЕ заблоковано!)${NC}"
+        blocked=0
+    else
+        echo -e "${GREEN}ЗАБЛОКОВАНО ✔${NC}"
+    fi
+
+    echo -n "2. Перевірка API api.roblox.com: "
+    if curl -s --connect-timeout 2 -m 3 https://api.roblox.com &>/dev/null; then
+        echo -e "${RED}ПРОПУСКАЄ (НЕ заблоковано!)${NC}"
+        blocked=0
+    else
+        echo -e "${GREEN}ЗАБЛОКОВАНО ✔${NC}"
+    fi
+
+    echo -n "3. Перевірка прямого пігну до IP ігрового пулу Roblox (128.116.116.1): "
+    if ping -c 1 -W 1 128.116.116.1 &>/dev/null; then
+        echo -e "${RED}ПРОПУСКАЄ (НЕ заблоковано!)${NC}"
+        blocked=0
+    else
+        echo -e "${GREEN}ЗАБЛОКОВАНО ✔${NC}"
+    fi
+
+    echo ""
+    if [[ $blocked -eq 1 ]]; then
+        echo -e "${GREEN}${BOLD}Все чудово! Roblox та Sober надійно заблоковані на вашій системі.${NC}"
+    else
+        echo -e "${YELLOW}${BOLD}Увага: Деякі запити проходять. Переконайтеся, що ви запустили 'sudo rlb on' або 'sudo rlb auto'.${NC}"
+    fi
+    echo ""
+}
+
+show_help() {
+    echo -e "${BOLD}${CYAN}${APP_NAME} v${VERSION}${NC}"
+    echo -e "Повний блокувальник IP-адрес та доменів Roblox для Linux (включно з Sober / Flatpak).\n"
+    echo -e "${BOLD}Використання:${NC}"
+    echo -e "  rlb ${GREEN}auto${NC}       - Увімкнути блокування та додати в автостарт (systemd)"
+    echo -e "  rlb ${RED}off${NC}        - Вимкнути блокування Roblox та вимкнути автостарт"
+    echo -e "  rlb ${GREEN}on${NC}         - Увімкнути блокування негайно (без обов'язкового автостарту)"
+    echo -e "  rlb ${YELLOW}noauto${NC}     - Вимкнути автостарт systemd (залишити поточне блокування)"
+    echo -e "  rlb ${BLUE}status${NC}     - Показати стан правил, маршрутів, hosts та сервісу"
+    echo -e "  rlb ${CYAN}update${NC}     - Завантажити найновіші IP-префікси Roblox з публічних баз"
+    echo -e "  rlb ${BOLD}test${NC}       - Перевірити, чи заблокований Roblox на практиці"
+    echo -e "  rlb ${YELLOW}help${NC}       - Показати цю довідку"
+    echo ""
+    echo -e "${BOLD}Приклади:${NC}"
+    echo -e "  sudo rlb auto     # Налаштувати автостарт і заблокувати назавжди"
+    echo -e "  sudo rlb off      # Зняти блокування"
+    echo -e "  sudo rlb status   # Переглянути стан блокування"
+    echo ""
+}
+
+# --- Головний диспетчер команд ---
+
+COMMAND="${1:-}"
+
+case "$COMMAND" in
+    auto)
+        check_root "$@"
+        do_auto
+        ;;
+    off|unblock|stop|disable)
+        check_root "$@"
+        do_off
+        ;;
+    on|block|start|enable)
+        check_root "$@"
+        do_on
+        ;;
+    noauto)
+        check_root "$@"
+        do_noauto
+        ;;
+    status)
+        do_status
+        ;;
+    update)
+        check_root "$@"
+        do_update
+        ;;
+    test)
+        do_test
+        ;;
+    help|--help|-h|"")
+        show_help
+        ;;
+    *)
+        echo -e "${RED}Невідома команда: $COMMAND${NC}\n"
+        show_help
+        exit 1
+        ;;
+esac
